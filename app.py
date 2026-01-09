@@ -3,98 +3,166 @@ import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import plotly.express as px
 
-# --- 1. ตั้งค่าหน้าจอ ---
-st.set_page_config(page_title="ระบบ KPI งานวิจัย", layout="wide")
+# --- 1. การตั้งค่าหน้าเว็บและฟอนต์ Sarabun (ตามต้นฉบับของคุณ) ---
+st.set_page_config(page_title="ระบบบริหารจัดการผลงานวิจัย", layout="wide")
 
-# --- 2. การเชื่อมต่อ Google Sheets ---
+st.markdown("""
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        html, body, [class*="css"] { font-family: 'Sarabun', sans-serif; }
+        .stDataFrame { border: 1px solid #e6e9ef; border-radius: 10px; }
+        h1, h2, h3 { color: #2c3e50; }
+        .main { background-color: #f8f9fa; }
+    </style>
+""", unsafe_allow_html=True)
+
+# เกณฑ์คะแนน (ตามต้นฉบับ)
+SCORE_MAP = {
+    "TCI1": 0.8, "TCI2": 0.6,
+    "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0,
+}
+
+# --- 2. เชื่อมต่อ Google Sheets (แทนที่การโหลด CSV) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     try:
-        # ดึงข้อมูล และตัดช่องว่างในชื่อคอลัมน์ออกโดยอัตโนมัติ
-        m_df = conn.read(worksheet="masters", ttl=0)
-        r_df = conn.read(worksheet="research", ttl=0)
+        # ดึงข้อมูลจากแผ่นงาน masters และ research
+        df_m = conn.read(worksheet="masters", ttl="5m")
+        df_r = conn.read(worksheet="research", ttl=0) # ttl=0 เพื่อให้อัปเดตทันทีเมื่อบันทึก
         
-        # ล้างช่องว่างในชื่อคอลัมน์เพื่อกัน Error
-        m_df.columns = m_df.columns.str.strip()
-        r_df.columns = r_df.columns.str.strip()
-        
-        return m_df, r_df
+        # ล้างช่องว่างในชื่อคอลัมน์
+        df_m.columns = df_m.columns.str.strip()
+        df_r.columns = df_r.columns.str.strip()
+        return df_m, df_r
     except Exception as e:
-        st.error(f"⚠️ ไม่สามารถเชื่อมต่อ Google Sheets ได้: {e}")
-        st.info("กรุณาตรวจสอบ: 1.ชื่อ Tab (masters/research) 2.สถานะการแชร์ (Anyone with link) 3.URL ใน Secrets")
+        st.error(f"❌ ไม่สามารถเชื่อมต่อ Google Sheets ได้: {e}")
         st.stop()
 
 df_master, df_research = load_data()
 
-# --- 3. ตรวจสอบชื่อคอลัมน์ (เพื่อป้องกันแอปพัง) ---
-required_m = ['Name-surname', 'คณะ', 'หลักสูตร']
-required_r = ['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร', 'คะแนน', 'ผู้เขียน']
-
-missing_m = [c for c in required_m if c not in df_master.columns]
-missing_r = [c for c in required_r if c not in df_research.columns]
-
-if missing_m or missing_r:
-    st.error(f"❌ หัวตารางใน Google Sheets ไม่ถูกต้อง")
-    if missing_m: st.write(f"หน้า masters ขาดคอลัมน์: {missing_m}")
-    if missing_r: st.write(f"หน้า research ขาดคอลัมน์: {missing_r}")
-    st.stop()
-
-# --- 4. Logic การคำนวณและแสดงผล ---
-st.title("📊 ระบบสรุปผลงานวิจัยออนไลน์")
-
-# เมนู Sidebar
-if 'logged_in' not in st.session_state: st.session_state['logged_in'] = False
+# =========================
+# SIDEBAR: เมนูและตัวกรอง (ตามต้นฉบับ)
+# =========================
 with st.sidebar:
-    st.header("🔑 ส่วนแอดมิน")
-    if not st.session_state['logged_in']:
-        user = st.text_input("Username")
-        pwd = st.text_input("Password", type="password")
-        if st.button("Login"):
-            if user == st.secrets.get("admin_user", "admin") and pwd == st.secrets.get("admin_pwd", "password123"):
-                st.session_state['logged_in'] = True
+    st.title("📌 ระบบบริหารงานวิจัย")
+    menu = st.radio("เลือกหน้าจอ", ["✍️ บันทึกผลงาน", "📊 รายงานและ KPI"])
+    
+    st.divider()
+    st.header("🔍 ตัวกรองปี พ.ศ.")
+    all_years = sorted(df_research["ปี"].unique().tolist()) if not df_research.empty else []
+    year_option = st.selectbox("เลือกปีที่ต้องการดู", ["แสดงทั้งหมด"] + [str(y) for y in all_years])
+    
+    st.divider()
+    st.info("💡 สูตร KPI ปรับปรุง: (((คะแนนรวม/อาจารย์)*100)/X)*5")
+
+# กรองข้อมูลวิจัยตามปี
+df_filtered = df_research.copy()
+if year_option != "แสดงทั้งหมด":
+    df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
+
+# =========================
+# หน้าที่ 1: บันทึกผลงาน (บันทึกลง Google Sheets)
+# =========================
+if menu == "✍️ บันทึกผลงาน":
+    st.title("✍️ บันทึกผลงานวิจัยใหม่")
+    with st.form("research_form", clear_on_submit=True):
+        col1, col2 = st.columns([3, 1])
+        with col1: title = st.text_input("ชื่อเรื่องงานวิจัย")
+        with col2: year = st.number_input("ปีที่ตีพิมพ์ (พ.ศ.)", 2560, 2600, 2568)
+        
+        journal = st.selectbox("ฐานวารสาร (Journal Database)", list(SCORE_MAP.keys()))
+        authors = st.multiselect("เลือกผู้เขียน (เลือกได้หลายท่าน)", df_master["Name-surname"].dropna().unique())
+
+        if st.form_submit_button("💾 บันทึกข้อมูลลงระบบ"):
+            if title and authors:
+                # สร้างข้อมูลใหม่
+                new_data = pd.DataFrame([{"ชื่อเรื่อง": title, "ปี": year, "ฐานวารสาร": journal, 
+                                          "คะแนน": SCORE_MAP[journal], "ผู้เขียน": a} for a in authors])
+                
+                # รวมข้อมูลเก่าและใหม่
+                df_updated = pd.concat([df_research, new_data], ignore_index=True)
+                
+                # อัปเดตไปยัง Google Sheets
+                conn.update(worksheet="research", data=df_updated)
+                
+                st.success("บันทึกข้อมูลสำเร็จลง Google Sheets แล้ว!")
+                st.cache_data.clear()
                 st.rerun()
+            else: st.warning("⚠️ กรุณาระบุชื่อเรื่องและเลือกผู้เขียนอย่างน้อย 1 ท่าน")
+
+# =========================
+# หน้าที่ 2: รายงานผล (Logic การคำนวณเดิมของคุณเป๊ะๆ)
+# =========================
+else:
+    st.title(f"📊 ผลลัพธ์การดำเนินงาน ({year_option})")
+
+    all_programs = df_master[df_master["หลักสูตร"].notna() & (df_master["หลักสูตร"] != "-")]["หลักสูตร"].unique()
+    df_all_progs = pd.DataFrame(all_programs, columns=["หลักสูตร"])
+    prog_to_fac = df_master.drop_duplicates("หลักสูตร").set_index("หลักสูตร")["คณะ"].to_dict()
+    df_all_progs["คณะ"] = df_all_progs["หลักสูตร"].map(prog_to_fac)
+
+    if df_filtered.empty:
+        prog_report = df_all_progs.copy()
+        prog_report["คะแนนสะสม"] = 0.0
     else:
-        if st.button("Logout"):
-            st.session_state['logged_in'] = False
-            st.rerun()
+        df_full_res = df_filtered.merge(df_master[['Name-surname', 'หลักสูตร']], 
+                                        left_on="ผู้เขียน", right_on="Name-surname", how="left")
+        res_sum = df_full_res.groupby("หลักสูตร").agg(คะแนนสะสม=("คะแนน", "sum")).reset_index()
+        prog_report = df_all_progs.merge(res_sum, on="หลักสูตร", how="left")
+        prog_report["คะแนนสะสม"] = prog_report["คะแนนสะสม"].fillna(0)
 
-menu = st.sidebar.radio("เลือกหน้า", ["ดูรายงาน KPI", "เพิ่มข้อมูลวิจัย"])
+    faculty_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
 
-if menu == "ดูรายงาน KPI":
-    # ส่วนสรุป KPI (ดึง Logic เดิมที่คุณต้องการ)
-    st.subheader("เป้าหมาย KPI รายหลักสูตร (เส้นแดงคือเกณฑ์ 5.0)")
-    
-    # คำนวณคะแนน (ตัวอย่างแบบย่อ)
-    res_agg = df_research.groupby("ผู้เขียน")["คะแนน"].sum().reset_index()
-    summary = df_master.merge(res_agg, left_on="Name-surname", right_on="ผู้เขียน", how="left").fillna(0)
-    
-    prog_report = summary.groupby("หลักสูตร")["คะแนน"].mean().reset_index() # คำนวณค่าเฉลี่ยเบื้องต้น
-    prog_report.columns = ["หลักสูตร", "คะแนนเฉลี่ย"]
-    
-    fig = px.bar(prog_report, x="คะแนนเฉลี่ย", y="หลักสูตร", orientation='h', color_discrete_sequence=['#2ecc71'])
-    fig.add_vline(x=5.0, line_dash="dash", line_color="red", annotation_text="เกณฑ์ผ่าน (5.0)")
-    st.plotly_chart(fig, use_container_width=True)
-    st.table(prog_report)
+    def get_x_value(prog):
+        group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
+        if prog in group_40: return 40
+        if prog == "Ph.D-Admin": return 60
+        return 20
 
-elif menu == "เพิ่มข้อมูลวิจัย":
-    if not st.session_state['logged_in']:
-        st.warning("กรุณาล็อกอินเพื่อบันทึกข้อมูล")
-    else:
-        with st.form("add_form", clear_on_submit=True):
-            st.subheader("บันทึกผลงานใหม่")
-            f_title = st.text_input("ชื่อเรื่อง")
-            f_year = st.number_input("ปี พ.ศ.", 2567, 2570, 2567)
-            f_base = st.selectbox("ฐานวารสาร", ["TCI1", "TCI2", "Scopus"])
-            f_author = st.selectbox("ผู้เขียน", df_master["Name-surname"].unique())
-            
-            if st.form_submit_button("💾 บันทึกลง Google Sheets"):
-                score_map = {"TCI1": 0.8, "TCI2": 0.6, "Scopus": 1.0}
-                new_data = pd.DataFrame([{
-                    "ชื่อเรื่อง": f_title, "ปี": f_year, "ฐานวารสาร": f_base,
-                    "คะแนน": score_map[f_base], "ผู้เขียน": f_author, "ผู้เขียนภายนอก": ""
-                }])
-                updated_df = pd.concat([df_research, new_data], ignore_index=True)
-                conn.update(worksheet="research", data=updated_df)
-                st.success("บันทึกสำเร็จ! กราฟจะอัปเดตทันที")
-                st.balloons()
+    def calculate_kpi(row):
+        prog = row["หลักสูตร"]
+        n_fac = faculty_counts.get(prog, 1)
+        x_val = get_x_value(prog)
+        kpi = (((row["คะแนนสะสม"] / n_fac) * 100) / x_val) * 5
+        return round(kpi, 4)
+
+    prog_report["คะแนนปัจจุบัน"] = prog_report.apply(calculate_kpi, axis=1)
+    prog_report["ส่วนที่ขาด"] = prog_report["คะแนนปัจจุบัน"].apply(lambda x: max(0, 5 - x))
+    prog_report["สถานะ"] = prog_report["คะแนนปัจจุบัน"].apply(lambda x: "ผ่านเกณฑ์ ✅" if x >= 5 else "กำลังดำเนินการ")
+    prog_report = prog_report.sort_values(by=["คณะ", "หลักสูตร"])
+
+    tab_prog, tab_person, tab_fac = st.tabs(["🎓 รายหลักสูตร (KPI)", "👤 รายบุคคล", "🏛 รายคณะ"])
+
+    with tab_prog:
+        st.subheader(f"สรุปความก้าวหน้า KPI รายหลักสูตร (ทั้งหมด {len(prog_report)} หลักสูตร)")
+        fig_prog = px.bar(
+            prog_report.melt(id_vars=["หลักสูตร", "คณะ"], value_vars=["คะแนนปัจจุบัน", "ส่วนที่ขาด"]),
+            x="value", y="หลักสูตร", color="variable", orientation='h',
+            color_discrete_map={"คะแนนปัจจุบัน": "#2ecc71", "ส่วนที่ขาด": "#f4f6f7"},
+            labels={'value': 'คะแนน KPI', 'variable': 'สถานะคะแนน'}, height=800 
+        )
+        fig_prog.add_vline(x=5, line_dash="dash", line_color="#e74c3c", annotation_text="เป้าหมาย 5.0")
+        st.plotly_chart(fig_prog, use_container_width=True)
+
+        st.dataframe(
+            prog_report[["คณะ", "หลักสูตร", "คะแนนสะสม", "คะแนนปัจจุบัน", "สถานะ"]]
+            .style.apply(lambda x: ['background-color: #d4efdf' if x.สถานะ == "ผ่านเกณฑ์ ✅" else '' for _ in x], axis=1)
+            .format({"คะแนนสะสม": "{:.2f}", "คะแนนปัจจุบัน": "{:.2f}"}),
+            use_container_width=True, height=770
+        )
+
+    with tab_person:
+        if not df_filtered.empty:
+            df_p = df_filtered.merge(df_master[['Name-surname', 'คณะ']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
+            p_report = df_p.groupby(["คณะ", "ผู้เขียน"]).agg(จำนวนเรื่อง=("ชื่อเรื่อง", "nunique"), คะแนนรวม=("คะแนน", "sum")).reset_index()
+            st.dataframe(p_report.sort_values(by=["คณะ", "คะแนนรวม"], ascending=[True, False]), use_container_width=True)
+        else: st.info("ยังไม่มีข้อมูลผลงานในปีที่เลือก")
+
+    with tab_fac:
+        if not df_filtered.empty:
+            df_f = df_filtered.merge(df_master[['Name-surname', 'คณะ']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
+            df_f['ปี_str'] = df_f['ปี'].astype(str)
+            fig_f = px.bar(df_f.groupby(['ปี_str', 'คณะ'])['คะแนน'].sum().reset_index(), 
+                           x="ปี_str", y="คะแนน", color="คณะ", barmode="group")
+            st.plotly_chart(fig_f, use_container_width=True)
