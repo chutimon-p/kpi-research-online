@@ -1,6 +1,4 @@
 streamlit
 pandas
 plotly
-openpyxl
-xlsxwriter
 st-gsheets-connection
