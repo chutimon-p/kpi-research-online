@@ -14,7 +14,21 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. การเชื่อมต่อ Google Sheets ---
+# --- 2. ตรวจสอบการตั้งค่า Secrets ---
+if "connections" not in st.secrets or "gsheets" not in st.secrets.connections:
+    st.error("❌ ไม่พบการตั้งค่า Spreadsheet ใน Secrets")
+    st.info("""
+    **วิธีแก้ไข:**
+    1. ไปที่หน้า **Streamlit Cloud Settings > Secrets**
+    2. วางค่าคอนฟิกดังนี้:
+       ```toml
+       [connections.gsheets]
+       spreadsheet = "URL_ของ_GOOGLE_SHEETS_คุณ"
+       ```
+    """)
+    st.stop()
+
+# --- 3. การเชื่อมต่อ Google Sheets ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 @st.cache_data(ttl=0)
@@ -30,13 +44,13 @@ def load_data():
         
         return df_m, df_r
     except Exception as e:
-        st.error(f"❌ ไม่สามารถดึงข้อมูลได้: {e}")
-        st.info("กรุณาตรวจสอบว่าชื่อ Tab ใน Google Sheets คือ 'masters' และ 'research' (ตัวพิมพ์เล็ก)")
+        st.error(f"❌ เกิดข้อผิดพลาด: {e}")
+        st.info("ตรวจสอบว่าชื่อ Tab คือ 'masters' และ 'research' (ตัวพิมพ์เล็ก) และเปิดแชร์ไฟล์เป็น 'Anyone with the link' หรือยัง?")
         st.stop()
 
 df_master, df_research = load_data()
 
-# --- 3. ส่วนควบคุม (Sidebar) ---
+# --- 4. ส่วนควบคุม (Sidebar) ---
 with st.sidebar:
     st.title("📌 ระบบบริหารงานวิจัย")
     menu = st.radio("เลือกเมนู", ["📊 รายงาน KPI", "✍️ บันทึกผลงาน"])
@@ -49,31 +63,29 @@ with st.sidebar:
     else:
         year_option = "ทั้งหมด"
 
-# --- 4. หน้าที่ 1: รายงาน KPI ---
+# --- 5. หน้าที่ 1: รายงาน KPI ---
 if menu == "📊 รายงาน KPI":
     st.title(f"📊 สรุปผลการดำเนินงานวิจัย ปี {year_option}")
     
-    # กรองข้อมูลตามปี
     df_f = df_research.copy()
     if year_option != "ทั้งหมด":
         df_f = df_f[df_f["ปี"] == int(year_option)]
 
-    # รายชื่อหลักสูตรทั้งหมดจากหน้า masters (162 ท่าน)
+    # ประมวลผลหลักสูตรจากหน้า masters
     progs = df_master[df_master["หลักสูตร"].notna() & (df_master["หลักสูตร"] != "-")]["หลักสูตร"].unique()
     report = pd.DataFrame(progs, columns=["หลักสูตร"])
     
-    # ดึงข้อมูล คณะ และ จำนวนอาจารย์
     fac_map = df_master.drop_duplicates("หลักสูตร").set_index("หลักสูตร")["คณะ"].to_dict()
     staff_cnt = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
     
-    # รวมคะแนนจากหน้า research โดยเชื่อมผ่านชื่ออาจารย์ (Name-surname)
+    # รวมคะแนน
     merged = df_f.merge(df_master[['Name-surname', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
     score_sum = merged.groupby("หลักสูตร")["คะแนน"].sum().reset_index()
     
     report = report.merge(score_sum, on="หลักสูตร", how="left").fillna(0)
     report["คณะ"] = report["หลักสูตร"].map(fac_map)
 
-    # สูตรคำนวณ KPI Score (PhD=60, Master/Dip=40, อื่นๆ=20)
+    # คำนวณ KPI Score
     def calc_kpi(row):
         p = row["หลักสูตร"]
         n = staff_cnt.get(p, 1)
@@ -88,37 +100,25 @@ if menu == "📊 รายงาน KPI":
     # แสดงกราฟ
     fig = px.bar(report, x="คะแนน KPI", y="หลักสูตร", color="คณะ", orientation='h', height=800,
                  text="คะแนน KPI", color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig.add_vline(x=5.0, line_dash="dash", line_color="red", annotation_text="เป้าหมาย 5.0")
+    fig.add_vline(x=5.0, line_dash="dash", line_color="red")
     st.plotly_chart(fig, use_container_width=True)
-    
-    st.write("### 📋 ตารางสรุปข้อมูลรายหลักสูตร")
     st.dataframe(report, use_container_width=True)
 
-# --- 5. หน้าที่ 2: บันทึกผลงาน ---
+# --- 6. หน้าที่ 2: บันทึกผลงาน ---
 else:
     st.title("✍️ บันทึกผลงานใหม่")
     with st.form("research_form", clear_on_submit=True):
         t = st.text_input("ชื่อเรื่องงานวิจัย")
-        col1, col2 = st.columns(2)
-        with col1:
-            y = st.number_input("ปี พ.ศ.", 2560, 2600, 2568)
-        with col2:
-            s_map = {"TCI 1": 0.8, "TCI 2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
-            base = st.selectbox("ฐานวารสาร", list(s_map.keys()))
-            
-        authors = st.multiselect("เลือกอาจารย์ผู้เขียน (จากหน้า masters)", sorted(df_master["Name-surname"].unique()))
-        ext = st.text_input("ผู้เขียนภายนอก (ถ้ามี)")
-
+        y = st.number_input("ปี พ.ศ.", 2567, 2600, 2568)
+        s_map = {"TCI 1": 0.8, "TCI 2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
+        base = st.selectbox("ฐานวารสาร", list(s_map.keys()))
+        authors = st.multiselect("เลือกอาจารย์ผู้เขียน", sorted(df_master["Name-surname"].unique()))
+        
         if st.form_submit_button("💾 บันทึกข้อมูลลง Google Sheets"):
             if t and authors:
-                new_data = [{"ชื่อเรื่อง": t, "ปี": y, "ฐานวารสาร": base, "คะแนน": s_map[base], "ผู้เขียน": a, "ผู้เขียนภายนอก": ext} for a in authors]
+                new_data = [{"ชื่อเรื่อง": t, "ปี": y, "ฐานวารสาร": base, "คะแนน": s_map[base], "ผู้เขียน": a} for a in authors]
                 updated_df = pd.concat([df_research, pd.DataFrame(new_data)], ignore_index=True)
-                
-                # อัปเดตกลับไปยัง Google Sheets
                 conn.update(worksheet="research", data=updated_df)
-                
-                st.success("✅ บันทึกข้อมูลสำเร็จ!")
+                st.success("✅ บันทึกสำเร็จ!")
                 st.cache_data.clear()
                 st.rerun()
-            else:
-                st.warning("⚠️ กรุณากรอกชื่อเรื่องและเลือกผู้เขียน")
