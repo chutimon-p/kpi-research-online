@@ -77,10 +77,9 @@ with st.sidebar:
             st.session_state.logged_in = False
             st.rerun()
 
-    # ตัวกรองปี (ใช้สำหรับกรองตารางสรุป แต่กราฟคณะจะใช้ข้อมูลทั้งหมดเพื่อเปรียบเทียบปี)
     if not df_research.empty:
         all_years = sorted(df_research["ปี"].unique().tolist())
-        year_option = st.selectbox("🔍 กรองข้อมูลปี พ.ศ. (สำหรับตาราง)", ["ทั้งหมด"] + [str(y) for y in all_years])
+        year_option = st.selectbox("🔍 ปี พ.ศ. (สำหรับรายงาน)", ["ทั้งหมด"] + [str(y) for y in all_years])
     else: year_option = "ทั้งหมด"
 
 df_filtered = df_research.copy()
@@ -96,78 +95,87 @@ if menu == "📊 รายงานและ KPI":
     if df_master.empty:
         st.error("ไม่พบข้อมูลอาจารย์ในระบบ")
     else:
-        # เชื่อมข้อมูลวิจัยกับข้อมูล Master (คณะ)
-        res_with_prog = df_research.merge(df_master[['Name-surname', 'คณะ']], 
-                                         left_on="ผู้เขียน", right_on="Name-surname", how="left")
+        # เชื่อมข้อมูลวิจัยกับข้อมูล Master (หลักสูตร/คณะ)
+        res_full = df_filtered.merge(df_master[['Name-surname', 'หลักสูตร', 'คณะ']], 
+                                    left_on="ผู้เขียน", right_on="Name-surname", how="left")
         
-        t1, t2 = st.tabs(["👤 รายบุคคล (เจาะลึก)", "🏛 รายคณะ (เปรียบเทียบปี)"])
+        t1, t2, t3 = st.tabs(["🎓 รายหลักสูตร (KPI)", "👤 รายบุคคล (เจาะลึก)", "🏛 รายคณะ (เปรียบเทียบปี)"])
         
         with t1:
+            st.subheader(f"🎓 คะแนน KPI รายหลักสูตร ({year_option})")
+            # เตรียมโครงสร้างหลักสูตรและจำนวนอาจารย์
+            all_progs = df_master[["หลักสูตร", "คณะ"]].drop_duplicates().dropna()
+            all_progs = all_progs[all_progs["หลักสูตร"] != "-"]
+            faculty_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
+
+            # คำนวณคะแนน
+            prog_sum = res_full.groupby("หลักสูตร")["คะแนน"].sum().reset_index()
+            prog_report = all_progs.merge(prog_sum, on="หลักสูตร", how="left").fillna(0)
+
+            def calculate_kpi(row):
+                prog = row["หลักสูตร"]
+                score = row["คะแนน"]
+                n_fac = faculty_counts.get(prog, 1)
+                group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
+                x_val = 60 if prog == "Ph.D-Admin" else (40 if prog in group_40 else 20)
+                kpi_val = (((score / n_fac) * 100) / x_val) * 5
+                return round(min(kpi_val, 5.0), 2)
+
+            prog_report["คะแนน KPI"] = prog_report.apply(calculate_kpi, axis=1)
+            
+            # กราฟแท่งแสดงคะแนนทุกหลักสูตร พร้อมเส้นชัย (KPI=5)
+            fig_prog = px.bar(prog_report.sort_values("คะแนน KPI"), x="คะแนน KPI", y="หลักสูตร", 
+                             color="คณะ", orientation='h', range_x=[0, 5.5], 
+                             text="คะแนน KPI", title="สรุปความก้าวหน้า KPI รายหลักสูตร (เป้าหมาย 5.0)")
+            
+            # เพิ่มเส้นไฮไลท์ที่คะแนน 5.0 (เกณฑ์ผ่าน)
+            fig_prog.add_vline(x=5.0, line_dash="dash", line_color="red", 
+                              annotation_text=" เกณฑ์ผ่าน (5.0)", annotation_position="top right")
+            
+            st.plotly_chart(fig_prog, use_container_width=True)
+            st.dataframe(prog_report, use_container_width=True, hide_index=True)
+
+        with t2:
             st.subheader(f"📋 สรุปผลงานรายบุคคล ({year_option})")
             if not df_filtered.empty:
                 p_report = df_filtered.groupby("ผู้เขียน").agg(
                     จำนวนเรื่อง=("ชื่อเรื่อง", "count"),
                     คะแนนสะสม=("คะแนน", "sum")
                 ).reset_index().sort_values("คะแนนสะสม", ascending=False)
-                
                 st.dataframe(p_report, use_container_width=True, hide_index=True)
                 
-                st.divider()
                 selected_author = st.selectbox("เลือกชื่ออาจารย์เพื่อดูรายละเอียด:", ["-- เลือกรายชื่อ --"] + p_report["ผู้เขียน"].tolist())
                 if selected_author != "-- เลือกรายชื่อ --":
-                    st.success(f"📌 รายละเอียดผลงานของ: {selected_author}")
-                    detail_df = df_filtered[df_filtered["ผู้เขียน"] == selected_author][["ชื่อเรื่อง", "ปี", "ฐานวารสาร", "คะแนน"]]
-                    st.table(detail_df)
-            else:
-                st.info("ไม่มีข้อมูลผลงาน")
+                    st.success(f"📌 ผลงานของ: {selected_author}")
+                    st.table(df_filtered[df_filtered["ผู้เขียน"] == selected_author][["ชื่อเรื่อง", "ปี", "ฐานวารสาร", "คะแนน"]])
+            else: st.info("ไม่มีข้อมูล")
 
-        with t2:
-            st.subheader("🏛 คะแนนสะสมถ่วงน้ำหนักแยกตามคณะและปี พ.ศ.")
-            if "คณะ" in res_with_prog.columns and not df_research.empty:
-                # จัดกลุ่มข้อมูลตาม ปี และ คณะ เพื่อทำกราฟแท่ง
-                # ใช้ drop_duplicates เพื่อไม่ให้นับคะแนนซ้ำหากหนึ่งเรื่องมีผู้เขียนหลายคนในคณะเดียวกัน
-                fac_year_data = res_with_prog.drop_duplicates(subset=["ชื่อเรื่อง", "คณะ"]).groupby(["ปี", "คณะ"])["คะแนน"].sum().reset_index()
-                
-                # ตรวจสอบว่า "ปี" เป็นตัวเลขเพื่อให้แกน X เรียงลำดับถูกต้อง
-                fac_year_data["ปี"] = fac_year_data["ปี"].astype(str)
-                
-                # สร้างกราฟแท่งเปรียบเทียบ
-                fig_fac = px.bar(
-                    fac_year_data, 
-                    x="ปี", 
-                    y="คะแนน", 
-                    color="คณะ",
-                    barmode="group",
-                    labels={"คะแนน": "ค่าถ่วงน้ำหนักสะสม", "ปี": "ปี พ.ศ."},
-                    title="เปรียบเทียบคะแนนสะสมรายคณะแยกตามปี พ.ศ.",
-                    text_auto='.2f'
-                )
-                
-                fig_fac.update_layout(xaxis_title="ปี พ.ศ.", yaxis_title="คะแนนสะสมถ่วงน้ำหนัก")
+        with t3:
+            st.subheader("🏛 คะแนนสะสมถ่วงน้ำหนักรายคณะ")
+            # ใช้ข้อมูลทั้งหมด (df_research) เพื่อเปรียบเทียบปี
+            res_all_time = df_research.merge(df_master[['Name-surname', 'คณะ']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
+            if not res_all_time.empty:
+                fac_year = res_all_time.drop_duplicates(subset=["ชื่อเรื่อง", "คณะ"]).groupby(["ปี", "คณะ"])["คะแนน"].sum().reset_index()
+                fac_year["ปี"] = fac_year["ปี"].astype(str)
+                fig_fac = px.bar(fac_year, x="ปี", y="คะแนน", color="คณะ", barmode="group", text_auto='.2f', title="เปรียบเทียบคะแนนสะสมรายคณะแยกตามปี")
                 st.plotly_chart(fig_fac, use_container_width=True)
-                
-                # แสดงตารางข้อมูลประกอบกราฟ
-                st.write("📋 **ตารางสรุปคะแนนรายคณะ**")
-                st.dataframe(fac_year_data.pivot(index='คณะ', columns='ปี', values='คะแนน').fillna(0), use_container_width=True)
-            else:
-                st.info("ยังไม่มีข้อมูลเพียงพอสำหรับแสดงกราฟรายคณะ")
 
 # ==========================================
-# 5. หน้าจอ Protected (ต้อง Login)
+# 5. หน้าจอ Protected (Login Required)
 # ==========================================
 elif menu == "✍️ บันทึกผลงาน":
     st.title("✍️ บันทึกผลงานใหม่")
-    with st.form("research_form", clear_on_submit=True):
+    with st.form("add_form", clear_on_submit=True):
         col1, col2 = st.columns([3, 1])
         with col1: title = st.text_input("ชื่อเรื่องงานวิจัย")
-        with col2: year = st.number_input("ปีที่ตีพิมพ์ (พ.ศ.)", 2560, 2600, 2568)
+        with col2: year = st.number_input("ปี (พ.ศ.)", 2560, 2600, 2568)
         col3, col4 = st.columns(2)
         with col3: journal = st.selectbox("ฐานวารสาร", list(SCORE_MAP.keys()))
-        with col4: authors = st.multiselect("เลือกผู้เขียน", df_master["Name-surname"].unique().tolist() if not df_master.empty else [])
+        with col4: authors = st.multiselect("เลือกผู้เขียน", df_master["Name-surname"].unique().tolist())
         if st.form_submit_button("💾 บันทึก"):
             if title and authors:
-                new_rows = [{"ชื่อเรื่อง": title, "ปี": year, "ฐานวารสาร": journal, "คะแนน": SCORE_MAP[journal], "ผู้เขียน": a} for a in authors]
-                df_updated = pd.concat([df_research, pd.DataFrame(new_rows)], ignore_index=True)
+                new_data = [{"ชื่อเรื่อง": title, "ปี": year, "ฐานวารสาร": journal, "คะแนน": SCORE_MAP[journal], "ผู้เขียน": a} for a in authors]
+                df_updated = pd.concat([df_research, pd.DataFrame(new_data)], ignore_index=True)
                 df_updated.to_csv(RESEARCH_FILE, index=False, encoding="utf-8-sig")
                 st.success("บันทึกสำเร็จ!")
                 st.cache_data.clear()
@@ -176,10 +184,9 @@ elif menu == "✍️ บันทึกผลงาน":
 elif menu == "⚙️ จัดการข้อมูล":
     st.title("⚙️ จัดการข้อมูล")
     if not df_research.empty:
-        to_delete = st.selectbox("เลือกเรื่องที่จะลบ", df_research["ชื่อเรื่อง"].unique())
-        if st.button("🗑 ยืนยันการลบ"):
-            df_new = df_research[df_research["ชื่อเรื่อง"] != to_delete]
-            df_new.to_csv(RESEARCH_FILE, index=False, encoding="utf-8-sig")
+        to_del = st.selectbox("เลือกเรื่องที่ต้องการลบ", df_research["ชื่อเรื่อง"].unique())
+        if st.button("🗑 ลบข้อมูล"):
+            df_research[df_research["ชื่อเรื่อง"] != to_del].to_csv(RESEARCH_FILE, index=False, encoding="utf-8-sig")
             st.success("ลบสำเร็จ")
             st.cache_data.clear()
             st.rerun()
