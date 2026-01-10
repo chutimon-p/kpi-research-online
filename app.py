@@ -61,7 +61,7 @@ st.markdown("""
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
     try:
-        st.image("logo.jpg", width=120)
+        st.image("logo.jpg", width=150)
     except:
         st.info("🏫 STIU")
 
@@ -224,3 +224,4 @@ elif menu == "⚙️ Manage Database":
             st.success(f"Removed: {to_del}")
             st.cache_data.clear()
             st.rerun()
+
