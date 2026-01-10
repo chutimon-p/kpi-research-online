@@ -16,7 +16,7 @@ def conn_sheets():
         client = gspread.authorize(creds)
         return client
     except Exception as e:
-        st.error(f"❌ ระบบไม่สามารถเชื่อมต่อ Google Cloud ได้: {e}")
+        st.error(f"❌ การเชื่อมต่อล้มเหลว: {e}")
         return None
 
 def load_sheet_data(sheet_name):
@@ -30,7 +30,7 @@ def load_sheet_data(sheet_name):
             df.columns = df.columns.str.strip() 
             return df
         except Exception as e:
-            st.error(f"❌ โหลดข้อมูลจาก Sheet '{sheet_name}' ไม่สำเร็จ: {e}")
+            st.error(f"❌ ไม่สามารถโหลดข้อมูล '{sheet_name}': {e}")
             return pd.DataFrame()
     return pd.DataFrame()
 
@@ -42,19 +42,18 @@ def save_to_sheet(sheet_name, new_row_dict):
         worksheet.append_row(list(new_row_dict.values()))
 
 # ==========================================
-# 2. การตั้งค่าหน้าเว็บและดีไซน์ (Header & Branding)
+# 2. การตั้งค่าหน้าเว็บและ Header
 # ==========================================
 st.set_page_config(page_title="Research Management - STIU", layout="wide")
 
-# ส่วนหัวเว็บไซต์ (Header) ปรับปรุงใหม่ให้รูปขึ้นแน่นอน
+# ส่วนหัว (Header) - ดึงรูปจากตัวแอปเอง
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
     try:
-        # สั่งให้อ่านไฟล์ชื่อ logo.png ที่อยู่ในโฟลเดอร์เดียวกับ app.py
+        # ต้องอัปโหลดไฟล์ชื่อ logo.png ลง GitHub ห้องเดียวกับ app.py นะครับ
         st.image("logo.png", width=120)
     except:
-        # กรณีที่ยังไม่ได้อัปโหลดไฟล์ หรือชื่อไฟล์ไม่ตรง จะแสดงข้อความแทนเพื่อไม่ให้หน้าเว็บพัง
-        st.markdown("### 🏫 STIU")
+        st.info("💡 แนะนำ: อัปโหลดไฟล์ชื่อ logo.png ลง GitHub เพื่อแสดงโลโก้")
 
 with header_col2:
     st.markdown("""
@@ -72,13 +71,13 @@ df_master = load_sheet_data("masters")
 df_research = load_sheet_data("research")
 
 if df_master.empty or df_research.empty:
-    st.warning("⚠️ ไม่พบข้อมูลใน Google Sheets หรือการเชื่อมต่อมีปัญหา กรุณาตรวจสอบสิทธิ์การแชร์ไฟล์")
+    st.warning("⚠️ กำลังเชื่อมต่อข้อมูล หรือข้อมูลใน Sheets ว่างเปล่า")
     st.stop()
 
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
 
 # ==========================================
-# 3. Sidebar
+# 3. Sidebar & Navigation
 # ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -100,37 +99,34 @@ with st.sidebar:
             if pwd == ADMIN_PASSWORD:
                 st.session_state.logged_in = True
                 st.rerun()
-            else: st.error("Incorrect Password")
+            else: st.error("รหัสผ่านไม่ถูกต้อง")
     else:
-        st.success("🔓 Logged in as Admin")
+        st.success("🔓 สถานะ: ผู้ดูแลระบบ")
         if st.button("Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
     st.divider()
     all_years = sorted(df_research["ปี"].unique().tolist()) if not df_research.empty else []
-    year_option = st.selectbox("📅 Academic Year", ["All Years"] + [str(y) for y in all_years])
+    year_option = st.selectbox("📅 ปีการศึกษา (พ.ศ.)", ["ทั้งหมด"] + [str(y) for y in all_years])
 
 # ==========================================
-# 4. หน้าจอแสดงผล (Reports)
+# 4. แสดงผล Reports
 # ==========================================
 if menu == "📊 Dashboard & Reports":
-    st.subheader(f"📈 Research Performance Report ({year_option})")
+    st.subheader(f"📈 รายงานผลการดำเนินงาน ({year_option})")
     
     df_filtered = df_research.copy()
-    if year_option != "All Years":
+    if year_option != "ทั้งหมด":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # แสดง Metrics สีสันสวยงาม
+    # สรุปตัวเลขสำคัญ
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.info(f"📚 **Total Titles**\n\n### {len(df_filtered.drop_duplicates(subset=['ชื่อเรื่อง']))}")
-    with c2:
-        st.success(f"👥 **Researchers**\n\n### {df_filtered['ผู้เขียน'].nunique()}")
-    with c3:
-        st.warning(f"🏆 **Total Score**\n\n### {df_filtered['คะแนน'].sum():.2f}")
+    c1.metric("จำนวนผลงานทั้งหมด", f"{len(df_filtered.drop_duplicates(subset=['ชื่อเรื่อง']))} เรื่อง")
+    c2.metric("จำนวนนักวิจัย", f"{df_filtered['ผู้เขียน'].nunique()} ท่าน")
+    c3.metric("คะแนนถ่วงน้ำหนักรวม", f"{df_filtered['คะแนน'].sum():.2f}")
 
-    t1, t2, t3, t4 = st.tabs(["🎓 Program KPI", "👤 Researcher", "🏛 Faculty", "📋 Master Data"])
+    t1, t2, t3, t4 = st.tabs(["🎓 KPI รายหลักสูตร", "👤 รายบุคคล", "🏛 รายคณะ", "📋 Master Data"])
 
     with t1:
         st.markdown("### 🏆 ความก้าวหน้า KPI รายหลักสูตร")
@@ -146,35 +142,33 @@ if menu == "📊 Dashboard & Reports":
             n = faculty_counts.get(row["หลักสูตร"], 1)
             group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
             x = 60 if row["หลักสูตร"] == "Ph.D-Admin" else (40 if row["หลักสูตร"] in group_40 else 20)
-            score = round(min((((row["คะแนน"] / n) * 100) / x) * 5, 5.0), 2)
-            return score
+            return round(min((((row["คะแนน"] / n) * 100) / x) * 5, 5.0), 2)
 
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
         prog_report = prog_report.sort_values(by=["คณะ", "KPI Score"])
 
         fig = px.bar(prog_report, x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', 
-                     range_x=[0, 5.5], text="KPI Score", height=700,
-                     color_discrete_sequence=px.colors.qualitative.Bold)
+                     range_x=[0, 5.5], text="KPI Score", height=700)
         fig.add_vline(x=5.0, line_dash="dash", line_color="red", annotation_text="Target 5.0")
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(prog_report, use_container_width=True, hide_index=True)
 
     with t2:
-        st.markdown("### 👤 ผลงานแยกตามรายบุคคล")
+        st.markdown("### 👤 ผลงานรายบุคคล")
         if not df_filtered.empty:
             p_report = df_filtered.groupby("ผู้เขียน").agg(จำนวนเรื่อง=("ชื่อเรื่อง", "count"), คะแนนสะสม=("คะแนน", "sum")).reset_index()
             st.dataframe(p_report.sort_values("คะแนนสะสม", ascending=False), use_container_width=True, hide_index=True)
-        else: st.info("ไม่มีข้อมูล")
+        else: st.info("ยังไม่มีข้อมูล")
 
     with t3:
-        st.markdown("### 🏛 ผลงานแยกตามรายคณะ")
+        st.markdown("### 🏛 ผลงานรายคณะ")
         res_with_prog = df_research.merge(df_master[['Name-surname', 'คณะ']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
         if not res_with_prog.empty:
             fac_sum = res_with_prog.groupby(["ปี", "คณะ"])["คะแนน"].sum().reset_index()
             st.plotly_chart(px.bar(fac_sum, x="ปี", y="คะแนน", color="คณะ", barmode="group"), use_container_width=True)
 
     with t4:
-        st.subheader("📋 ข้อมูลดิบ (Master Data)")
+        st.subheader("📋 ข้อมูล Master Data")
         st.dataframe(df_master, use_container_width=True, hide_index=True)
 
 # ==========================================
@@ -208,4 +202,3 @@ elif menu == "⚙️ Manage Database":
             st.success("ลบสำเร็จ")
             st.cache_data.clear()
             st.rerun()
-
