@@ -14,7 +14,7 @@ def conn_sheets():
         creds_dict = st.secrets["gcp_service_account"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     except Exception as e:
-        st.error("❌ ไม่สามารถดึงข้อมูลจาก Secrets ได้ กรุณาตรวจสอบการตั้งค่าใน Streamlit Cloud")
+        st.error("❌ ไม่สามารถดึงข้อมูลจาก Secrets ได้ (gcp_service_account)")
         st.stop()
         
     client = gspread.authorize(creds)
@@ -22,7 +22,7 @@ def conn_sheets():
 
 def load_sheet_data(sheet_name):
     client = conn_sheets()
-    # *** เปลี่ยนชื่อ "Research_Database" ให้ตรงกับชื่อไฟล์ของคุณ ***
+    # *** เปลี่ยนชื่อ "Research_Database" ให้ตรงกับชื่อไฟล์จริงใน Google Drive ของคุณ ***
     sh = client.open("Research_Database") 
     worksheet = sh.worksheet(sheet_name)
     data = worksheet.get_all_records()
@@ -32,7 +32,6 @@ def load_sheet_data(sheet_name):
 
 def save_to_sheet(sheet_name, new_row_dict):
     client = conn_sheets()
-    # *** เปลี่ยนชื่อ "Research_Database" ให้ตรงกับชื่อไฟล์ของคุณ ***
     sh = client.open("Research_Database")
     worksheet = sh.worksheet(sheet_name)
     worksheet.append_row(list(new_row_dict.values()))
@@ -42,15 +41,16 @@ def save_to_sheet(sheet_name, new_row_dict):
 # ==========================================
 st.set_page_config(page_title="ระบบบริหารจัดการผลงานวิจัย", layout="wide")
 
+# ดึงรหัสผ่านจาก Secrets (ไม่มีรหัสจริงในไฟล์นี้)
+# หากคุณยังไม่ได้ตั้งค่าใน Secrets ค่าจะเป็น None
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD")
+
 try:
     df_master = load_sheet_data("masters")
     df_research = load_sheet_data("research")
 except Exception as e:
-    st.error(f"⚠️ การเชื่อมต่อขัดข้อง: {e}")
+    st.error(f"⚠️ การเชื่อมต่อ Google Sheets ขัดข้อง: {e}")
     st.stop()
-
-# --- ดึงรหัสผ่านจาก Secrets (Security Best Practice) ---
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "") 
 
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
 
@@ -63,6 +63,8 @@ if 'logged_in' not in st.session_state:
 with st.sidebar:
     st.title("📌 เมนูหลัก")
     menu_options = ["📊 รายงานและ KPI"]
+    
+    # แสดงเมนู Admin เฉพาะเมื่อ Login แล้ว
     if st.session_state.logged_in:
         menu_options.insert(0, "✍️ บันทึกผลงาน")
         menu_options.append("⚙️ จัดการข้อมูล")
@@ -71,18 +73,24 @@ with st.sidebar:
     
     st.divider()
     if not st.session_state.logged_in:
-        pwd = st.text_input("🔐 รหัสผ่าน Admin", type="password")
-        if st.button("เข้าสู่ระบบ"):
-            if pwd == ADMIN_PASSWORD:
-                st.session_state.logged_in = True
-                st.rerun()
-            else: st.error("รหัสผ่านไม่ถูกต้อง")
+        # ตรวจสอบว่าแอดมินตั้งรหัสผ่านใน Secrets หรือยัง
+        if ADMIN_PASSWORD is None:
+            st.warning("⚠️ ยังไม่ได้ตั้งรหัสผ่านใน Streamlit Secrets")
+        else:
+            pwd = st.text_input("🔐 รหัสผ่าน Admin", type="password")
+            if st.button("เข้าสู่ระบบ"):
+                if pwd == ADMIN_PASSWORD:
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("รหัสผ่านไม่ถูกต้อง")
     else:
-        st.success("🔓 สถานะ: เจ้าหน้าที่")
+        st.success("🔓 สถานะ: เจ้าหน้าที่ (Admin)")
         if st.button("ออกจากระบบ"):
             st.session_state.logged_in = False
             st.rerun()
 
+    # ตัวกรองปี (สำหรับหน้ารายงาน)
     all_years = sorted(df_research["ปี"].unique().tolist()) if not df_research.empty else []
     year_option = st.selectbox("🔍 กรองตามปี พ.ศ.", ["ทั้งหมด"] + [str(y) for y in all_years])
 
@@ -96,6 +104,7 @@ if menu == "📊 รายงานและ KPI":
     if year_option != "ทั้งหมด":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
 
+    # เตรียมข้อมูล Master
     all_progs = df_master[["หลักสูตร", "คณะ"]].drop_duplicates().dropna()
     all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
     faculty_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
@@ -103,7 +112,7 @@ if menu == "📊 รายงานและ KPI":
     t1, t2, t3, t4 = st.tabs(["🎓 รายหลักสูตร (KPI)", "👤 รายบุคคล", "🏛 รายคณะ", "📋 ข้อมูล Master"])
 
     with t1:
-        st.subheader("🎓 ความก้าวหน้า KPI รายหลักสูตร")
+        st.subheader("🎓 กราฟความก้าวหน้า KPI รายหลักสูตร")
         prog_sum = df_filtered.merge(df_master[['Name-surname', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
         prog_sum = prog_sum.groupby("หลักสูตร")["คะแนน"].sum().reset_index()
         prog_report = all_progs.merge(prog_sum, on="หลักสูตร", how="left").fillna(0)
@@ -115,16 +124,14 @@ if menu == "📊 รายงานและ KPI":
             return round(min((((row["คะแนน"] / n) * 100) / x) * 5, 5.0), 2)
 
         prog_report["คะแนน KPI"] = prog_report.apply(calc_kpi, axis=1)
-        # เรียงลำดับตามคณะเพื่อให้แสดงผลเป็นกลุ่ม
         prog_report = prog_report.sort_values(by=["คณะ", "คะแนน KPI"])
 
         fig = px.bar(prog_report, x="คะแนน KPI", y="หลักสูตร", color="คณะ", orientation='h', 
-                     range_x=[0, 5.5], text="คะแนน KPI", height=700,
-                     category_orders={"หลักสูตร": prog_report["หลักสูตร"].tolist()})
+                     range_x=[0, 5.5], text="คะแนน KPI", height=700)
         fig.add_vline(x=5.0, line_dash="dash", line_color="red", annotation_text="เกณฑ์ผ่าน (5.0)")
         st.plotly_chart(fig, use_container_width=True)
         
-        st.subheader("📋 ตารางคะแนน KPI")
+        st.subheader("📋 ตารางคะแนน KPI แยกตามหลักสูตร")
         st.dataframe(prog_report, use_container_width=True, hide_index=True)
 
     with t2:
@@ -135,7 +142,7 @@ if menu == "📊 รายงานและ KPI":
             sel = st.selectbox("เลือกชื่อเพื่อดูรายละเอียด:", ["-- เลือกรายชื่อ --"] + p_report["ผู้เขียน"].tolist())
             if sel != "-- เลือกรายชื่อ --":
                 st.table(df_filtered[df_filtered["ผู้เขียน"] == sel][["ชื่อเรื่อง", "ฐานวารสาร", "ปี", "คะแนน"]])
-        else: st.info("ยังไม่มีข้อมูล")
+        else: st.info("ยังไม่มีข้อมูลงานวิจัยในปีที่เลือก")
 
     with t3:
         st.subheader("🏛 คะแนนสะสมถ่วงน้ำหนักรายคณะ")
@@ -147,40 +154,41 @@ if menu == "📊 รายงานและ KPI":
             st.plotly_chart(px.bar(fac_sum, x="ปี", y="คะแนน", color="คณะ", barmode="group", text_auto='.2f'), use_container_width=True)
 
     with t4:
-        st.subheader("📋 ข้อมูลดิบจาก Masters")
+        st.subheader("📋 รายชื่ออาจารย์และหลักสูตรทั้งหมด (Master)")
         st.dataframe(df_master, use_container_width=True, hide_index=True)
 
 # ==========================================
-# 5. ส่วนจัดการข้อมูล (สำหรับ Admin)
+# 5. ส่วนบันทึกและจัดการข้อมูล (เฉพาะ Admin)
 # ==========================================
 elif menu == "✍️ บันทึกผลงาน":
     st.title("✍️ บันทึกผลงานลง Google Sheets")
     with st.form("add_form", clear_on_submit=True):
-        t_in = st.text_input("ชื่อเรื่อง")
+        t_in = st.text_input("ชื่อเรื่องงานวิจัย")
         y_in = st.number_input("ปี พ.ศ.", 2560, 2600, 2568)
         j_in = st.selectbox("ฐานวารสาร", list(SCORE_MAP.keys()))
-        a_in = st.multiselect("ผู้เขียน", df_master["Name-surname"].unique().tolist())
-        if st.form_submit_button("บันทึก"):
+        a_in = st.multiselect("เลือกผู้เขียน (จากรายชื่ออาจารย์)", df_master["Name-surname"].unique().tolist())
+        
+        if st.form_submit_button("💾 บันทึกข้อมูล"):
             if t_in and a_in:
                 for author in a_in:
                     save_to_sheet("research", {"ชื่อเรื่อง": t_in, "ปี": y_in, "ฐานวารสาร": j_in, "คะแนน": SCORE_MAP[j_in], "ผู้เขียน": author})
-                st.success("✅ บันทึกสำเร็จ!")
+                st.success("✅ บันทึกข้อมูลสำเร็จ! ตรวจสอบได้ที่หน้า รายงาน")
                 st.cache_data.clear()
                 st.rerun()
 
 elif menu == "⚙️ จัดการข้อมูล":
-    st.title("⚙️ ลบข้อมูล")
+    st.title("⚙️ ลบข้อมูลในระบบ")
     if not df_research.empty:
-        to_del = st.selectbox("เลือกเรื่องที่จะลบ", df_research["ชื่อเรื่อง"].unique())
-        if st.button("ยืนยันการลบ"):
+        to_del = st.selectbox("เลือกชื่อเรื่องที่ต้องการลบ", df_research["ชื่อเรื่อง"].unique())
+        if st.button("🗑 ยืนยันการลบ"):
             client = conn_sheets()
             sh = client.open("Research_Database")
             ws = sh.worksheet("research")
             try:
                 cell = ws.find(to_del)
                 ws.delete_rows(cell.row)
-                st.success("ลบข้อมูลสำเร็จ")
+                st.success("✅ ลบข้อมูลออกจากระบบสำเร็จ")
                 st.cache_data.clear()
                 st.rerun()
             except:
-                st.error("ไม่พบข้อมูลในระบบ")
+                st.error("ไม่พบข้อมูลดังกล่าวในฐานข้อมูล")
