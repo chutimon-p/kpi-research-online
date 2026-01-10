@@ -82,7 +82,7 @@ st.markdown("""
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
     # โลโก้มหาวิทยาลัย
-    st.image("https://www.stic.ac.th/wp-content/uploads/2021/03/logo-stic.png", width=100)
+    st.image("https://raw.githubusercontent.com/Aekanun2020/STIU-Assets/main/stiu-logo.png", width=100)
 with header_col2:
     st.markdown("""
         <div style="padding-top: 10px;">
@@ -251,3 +251,4 @@ elif menu == "⚙️ Manage Database":
                 st.rerun()
             except:
                 st.error("Could not find the record.")
+
