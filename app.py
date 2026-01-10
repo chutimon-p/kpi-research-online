@@ -51,7 +51,7 @@ header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
     try:
         # ต้องอัปโหลดไฟล์ชื่อ logo.png ลง GitHub ห้องเดียวกับ app.py นะครับ
-        st.image("logo.png", width=120)
+        st.image("logo.jpg", width=120)
     except:
         st.info("💡 แนะนำ: อัปโหลดไฟล์ชื่อ logo.png ลง GitHub เพื่อแสดงโลโก้")
 
@@ -202,3 +202,4 @@ elif menu == "⚙️ Manage Database":
             st.success("ลบสำเร็จ")
             st.cache_data.clear()
             st.rerun()
+
