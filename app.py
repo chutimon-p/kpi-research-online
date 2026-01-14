@@ -98,7 +98,7 @@ if df_master.empty or df_research.empty:
     st.warning("⚠️ Accessing Google Sheets... Please wait or check your connection.")
     st.stop()
 
-# ทำความสะอาดข้อมูลตัวเลขเบื้องต้น
+# ทำความสะอาดข้อมูลตัวเลข
 df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
 df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
 
@@ -148,14 +148,12 @@ if menu == "📊 Dashboard & Reports":
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # Key Performance Metrics
     m1, m2, m3 = st.columns(3)
     unique_titles_count = len(df_filtered.drop_duplicates(subset=['ชื่อเรื่อง']))
     m1.metric("Total Publications", f"{unique_titles_count} Titles")
     m2.metric("Active Researchers", f"{df_filtered['ผู้เขียน'].nunique()} Persons")
     m3.metric("Weighted Score Sum", f"{df_filtered['คะแนน'].sum():.2f}")
 
-    # Tabs (เพิ่ม t0 สำหรับภาพรวมสถาบัน)
     t0, t1, t2, t3, t4 = st.tabs(["🏛 Institutional Overview", "🎓 Program KPI", "👤 Researcher Profile", "🏢 Faculty Performance", "📋 Master Database"])
 
     with t0:
@@ -170,11 +168,7 @@ if menu == "📊 Dashboard & Reports":
         fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Research Titles", marker_color='#1E3A8A'))
         fig_inst.add_trace(go.Scatter(x=inst_summary["ปี"], y=inst_summary["Total_Weight"], name="Weight Score Sum", yaxis="y2", line=dict(color='#ef4444', width=3)))
         
-        fig_inst.update_layout(
-            yaxis=dict(title="Number of Titles"),
-            yaxis2=dict(title="Total Weight Score", overlaying="y", side="right", showgrid=False),
-            template="plotly_white", legend=dict(orientation="h", y=1.1)
-        )
+        fig_inst.update_layout(yaxis=dict(title="Number of Titles"), yaxis2=dict(title="Total Weight Score", overlaying="y", side="right", showgrid=False), template="plotly_white", legend=dict(orientation="h", y=1.1))
         st.plotly_chart(fig_inst, use_container_width=True)
         st.dataframe(inst_summary.rename(columns={"ปี":"Year", "Titles":"Total Unique Titles"}), use_container_width=True, hide_index=True)
 
@@ -196,9 +190,7 @@ if menu == "📊 Dashboard & Reports":
 
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
         prog_report = prog_report.sort_values(by=["คณะ", "KPI Score"])
-
-        fig = px.bar(prog_report, x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', 
-                     range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white")
+        fig = px.bar(prog_report, x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white")
         fig.add_vline(x=5.0, line_dash="dash", line_color="#ef4444", annotation_text="Target")
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(prog_report, use_container_width=True, hide_index=True)
@@ -208,7 +200,6 @@ if menu == "📊 Dashboard & Reports":
         if not df_filtered.empty:
             p_report = df_filtered.groupby("ผู้เขียน").agg(Titles=("ชื่อเรื่อง", "nunique"), Total_Score=("คะแนน", "sum")).reset_index()
             st.dataframe(p_report.sort_values("Total_Score", ascending=False), use_container_width=True, hide_index=True)
-        else: st.info("No research records found.")
 
     with t3:
         st.markdown("#### 🏢 Faculty Performance Analysis")
@@ -219,7 +210,6 @@ if menu == "📊 Dashboard & Reports":
             st.dataframe(fac_sum.sort_values(by=["Year", "Total_Score"], ascending=[False, False]), use_container_width=True, hide_index=True)
 
     with t4:
-        st.markdown("#### 📋 Master Academic Database")
         st.dataframe(df_master, use_container_width=True, hide_index=True)
 
 # ==========================================
@@ -235,14 +225,14 @@ elif menu == "✍️ Submit Research":
         a_in = st.multiselect("Select Author(s)", df_master["Name-surname"].unique().tolist())
         
         if st.form_submit_button("💾 Save Record to Cloud"):
-            existing_titles = [str(t).lower() for t in df_research["ชื่อเรื่อง"].unique()]
+            existing_titles = [str(t).lower().strip() for t in df_research["ชื่อเรื่อง"].unique()]
             if t_in and a_in:
-                if t_in.lower() in existing_titles:
-                    st.warning(f"⚠️ Warning: '{t_in}' is already in the database. Duplicate ignored.")
+                if t_in.lower().strip() in existing_titles:
+                    st.warning(f"⚠️ Warning: '{t_in}' already exists.")
                 else:
                     for author in a_in:
                         save_to_sheet("research", {"ชื่อเรื่อง": t_in, "ปี": y_in, "ฐานวารสาร": j_in, "คะแนน": SCORE_MAP[j_in], "ผู้เขียน": author})
-                    st.success("✅ Success: Data pushed to Google Sheets!")
+                    st.success("✅ Recorded Successfully!")
                     st.cache_data.clear()
                     st.rerun()
             else: st.error("Please fill in Title and Author(s).")
@@ -252,29 +242,34 @@ elif menu == "⚙️ Manage Database":
     st.warning("⚠️ Action: Data deletion is permanent.")
     
     if not df_research.empty:
-        # เตรียมตารางรายละเอียดสำหรับดูข้อมูลก่อนลบ
+        # 1. ตารางแสดงรายละเอียด
         df_manage = df_research.drop_duplicates(subset=['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']).copy()
         df_manage = df_manage[['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']].sort_values(by=['ปี', 'ชื่อเรื่อง'], ascending=[False, True])
-        
-        st.markdown("##### 🔍 Research Records List")
+        st.markdown("##### 🔍 Records List")
         st.dataframe(df_manage, use_container_width=True, hide_index=True)
 
-        # ส่วนการเลือกเพื่อลบ
-        titles_list = df_manage.apply(lambda x: f"[{x['ปี']}] {x['ชื่อเรื่อง']} ({x['ฐานวารสาร']})", axis=1).tolist()
-        to_del_display = st.selectbox("Select exact entry to delete:", ["-- Select --"] + titles_list)
+        # 2. Selectbox แบบใช้ Pipe (|) แบ่งส่วนข้อมูลเพื่อความแม่นยำ
+        options = ["-- Select Entry --"] + [f"{r['ปี']} | {r['ชื่อเรื่อง']} | {r['ฐานวารสาร']}" for _, r in df_manage.iterrows()]
+        selected_option = st.selectbox("Choose entry to delete:", options)
 
-        if to_del_display != "-- Select --":
-            # แกะชื่อเรื่องที่แท้จริงออกมาเพื่อใช้ลบใน Google Sheets
-            actual_title = to_del_display.split("] ")[1].rsplit(" (", 1)[0]
-            if st.button("🗑 Confirm Permanent Delete"):
-                client = conn_sheets()
-                ws = client.open("Research_Database").worksheet("research")
-                try:
-                    cells = ws.findall(actual_title)
-                    rows_to_del = sorted([c.row for c in cells], reverse=True)
-                    for r in rows_to_del: ws.delete_rows(r)
-                    st.success(f"Removed: {actual_title}")
-                    st.cache_data.clear()
-                    st.rerun()
-                except: st.error("Error during deletion.")
-    else: st.info("No records to manage.")
+        if selected_option != "-- Select Entry --":
+            parts = selected_option.split(" | ")
+            target_title = parts[1].strip()
+            
+            if st.button("🗑 Confirm Delete"):
+                with st.spinner("Processing..."):
+                    client = conn_sheets()
+                    ws = client.open("Research_Database").worksheet("research")
+                    try:
+                        all_data = ws.get_all_records()
+                        # ค้นหาแถวที่มีชื่อเรื่องตรงกัน (กรณีมีผู้เขียนหลายคนลบทุกแถวที่เกี่ยวข้อง)
+                        rows_to_del = [i + 2 for i, row in enumerate(all_data) if str(row.get('ชื่อเรื่อง')).strip() == target_title]
+                        
+                        if rows_to_del:
+                            for r in sorted(rows_to_del, reverse=True):
+                                ws.delete_rows(r)
+                            st.success(f"✅ Deleted {len(rows_to_del)} record(s) for: {target_title}")
+                            st.cache_data.clear()
+                            st.rerun()
+                        else: st.error("Entry not found in Sheet.")
+                    except Exception as e: st.error(f"Error: {e}")
