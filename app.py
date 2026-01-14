@@ -173,7 +173,7 @@ if menu == "📊 Dashboard & Reports":
         st.dataframe(inst_summary.rename(columns={"ปี":"Year", "Titles":"Total Unique Titles"}), use_container_width=True, hide_index=True)
 
     with t1:
-        st.markdown("#### 🏆 KPI Achievement by Program")
+        st.markdown("#### 🏆 KPI Achievement by Program (Full score 5)")
         all_progs = df_master[["หลักสูตร", "คณะ"]].drop_duplicates().dropna()
         all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
         faculty_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
@@ -307,3 +307,4 @@ elif menu == "⚙️ Manage Database":
                             st.rerun()
                         else: st.error("Entry not found in Sheet.")
                     except Exception as e: st.error(f"Error: {e}")
+
