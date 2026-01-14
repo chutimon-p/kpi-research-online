@@ -10,7 +10,6 @@ import plotly.graph_objects as go
 # ==========================================
 @st.cache_resource
 def conn_sheets():
-    # แก้ไข indent และอักขระพิเศษเพื่อป้องกัน Syntax Error
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
         creds_dict = st.secrets["gcp_service_account"]
@@ -99,7 +98,7 @@ if df_master.empty or df_research.empty:
     st.warning("⚠️ Accessing Google Sheets... Please wait or check your connection.")
     st.stop()
 
-# ทำความสะอาดข้อมูลเบื้องต้น
+# ทำความสะอาดข้อมูลตัวเลขเบื้องต้น
 df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
 df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
 
@@ -151,38 +150,33 @@ if menu == "📊 Dashboard & Reports":
     
     # Key Performance Metrics
     m1, m2, m3 = st.columns(3)
-    # นับจำนวนเรื่องไม่ซ้ำ (Unique Titles)
     unique_titles_count = len(df_filtered.drop_duplicates(subset=['ชื่อเรื่อง']))
     m1.metric("Total Publications", f"{unique_titles_count} Titles")
     m2.metric("Active Researchers", f"{df_filtered['ผู้เขียน'].nunique()} Persons")
-    m3.metric("Weighted Score", f"{df_filtered['คะแนน'].sum():.2f}")
+    m3.metric("Weighted Score Sum", f"{df_filtered['คะแนน'].sum():.2f}")
 
-    # เพิ่ม t0 สำหรับ Institutional Overview
+    # Tabs (เพิ่ม t0 สำหรับภาพรวมสถาบัน)
     t0, t1, t2, t3, t4 = st.tabs(["🏛 Institutional Overview", "🎓 Program KPI", "👤 Researcher Profile", "🏢 Faculty Performance", "📋 Master Database"])
 
     with t0:
-        st.markdown("#### 📈 University-Wide Research Growth")
-        # เตรียมข้อมูลแนวโน้มรายปี (นับเรื่องไม่ซ้ำ)
+        st.markdown("#### 🌍 University Research Growth")
         inst_summary = df_research.drop_duplicates(subset=['ชื่อเรื่อง']).groupby("ปี").agg(
             Titles=("ชื่อเรื่อง", "count"),
             Total_Weight=("คะแนน", "sum")
         ).reset_index().sort_values("ปี")
-        
-        # ลบปีที่ค่าเป็น 0 ออก
         inst_summary = inst_summary[inst_summary['ปี'] > 0]
 
         fig_inst = go.Figure()
-        fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Titles", marker_color='#1E3A8A'))
-        fig_inst.add_trace(go.Scatter(x=inst_summary["ปี"], y=inst_summary["Total_Weight"], name="Score Sum", yaxis="y2", line=dict(color='#ef4444', width=3)))
+        fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Research Titles", marker_color='#1E3A8A'))
+        fig_inst.add_trace(go.Scatter(x=inst_summary["ปี"], y=inst_summary["Total_Weight"], name="Weight Score Sum", yaxis="y2", line=dict(color='#ef4444', width=3)))
         
         fig_inst.update_layout(
-            title="Trend: Research Volume vs Weighted Score",
             yaxis=dict(title="Number of Titles"),
-            yaxis2=dict(title="Total Score", overlaying="y", side="right", showgrid=False),
+            yaxis2=dict(title="Total Weight Score", overlaying="y", side="right", showgrid=False),
             template="plotly_white", legend=dict(orientation="h", y=1.1)
         )
         st.plotly_chart(fig_inst, use_container_width=True)
-        st.dataframe(inst_summary.rename(columns={"ปี":"Year", "Titles":"Unique Titles"}), use_container_width=True, hide_index=True)
+        st.dataframe(inst_summary.rename(columns={"ปี":"Year", "Titles":"Total Unique Titles"}), use_container_width=True, hide_index=True)
 
     with t1:
         st.markdown("#### 🏆 KPI Achievement by Program")
@@ -204,8 +198,7 @@ if menu == "📊 Dashboard & Reports":
         prog_report = prog_report.sort_values(by=["คณะ", "KPI Score"])
 
         fig = px.bar(prog_report, x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', 
-                     range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white",
-                     color_discrete_sequence=px.colors.qualitative.Safe)
+                     range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white")
         fig.add_vline(x=5.0, line_dash="dash", line_color="#ef4444", annotation_text="Target")
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(prog_report, use_container_width=True, hide_index=True)
@@ -213,21 +206,15 @@ if menu == "📊 Dashboard & Reports":
     with t2:
         st.markdown("#### 👤 Researcher Rankings")
         if not df_filtered.empty:
-            p_report = df_filtered.groupby("ผู้เขียน").agg(
-                Titles=("ชื่อเรื่อง", "nunique"), 
-                Total_Score=("คะแนน", "sum")
-            ).reset_index()
+            p_report = df_filtered.groupby("ผู้เขียน").agg(Titles=("ชื่อเรื่อง", "nunique"), Total_Score=("คะแนน", "sum")).reset_index()
             st.dataframe(p_report.sort_values("Total_Score", ascending=False), use_container_width=True, hide_index=True)
         else: st.info("No research records found.")
 
     with t3:
-        st.markdown("#### 🏛 Faculty Performance Analysis")
+        st.markdown("#### 🏢 Faculty Performance Analysis")
         res_with_prog = df_research.merge(df_master[['Name-surname', 'คณะ']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
         if not res_with_prog.empty:
-            fac_sum = res_with_prog.groupby(["ปี", "คณะ"]).agg(
-                Total_Score=("คะแนน", "sum"),
-                Unique_Publications=("ชื่อเรื่อง", "nunique")
-            ).reset_index().rename(columns={"ปี": "Year", "คณะ": "Faculty"})
+            fac_sum = res_with_prog.groupby(["ปี", "คณะ"]).agg(Total_Score=("คะแนน", "sum"), Unique_Pubs=("ชื่อเรื่อง", "nunique")).reset_index().rename(columns={"ปี": "Year", "คณะ": "Faculty"})
             st.plotly_chart(px.bar(fac_sum, x="Year", y="Total_Score", color="Faculty", barmode="group", text_auto='.2f'), use_container_width=True)
             st.dataframe(fac_sum.sort_values(by=["Year", "Total_Score"], ascending=[False, False]), use_container_width=True, hide_index=True)
 
@@ -248,9 +235,7 @@ elif menu == "✍️ Submit Research":
         a_in = st.multiselect("Select Author(s)", df_master["Name-surname"].unique().tolist())
         
         if st.form_submit_button("💾 Save Record to Cloud"):
-            # ตรวจสอบชื่อเรื่องซ้ำ
             existing_titles = [str(t).lower() for t in df_research["ชื่อเรื่อง"].unique()]
-            
             if t_in and a_in:
                 if t_in.lower() in existing_titles:
                     st.warning(f"⚠️ Warning: '{t_in}' is already in the database. Duplicate ignored.")
@@ -260,27 +245,36 @@ elif menu == "✍️ Submit Research":
                     st.success("✅ Success: Data pushed to Google Sheets!")
                     st.cache_data.clear()
                     st.rerun()
-            else:
-                st.error("Please fill in all required fields.")
+            else: st.error("Please fill in Title and Author(s).")
 
 elif menu == "⚙️ Manage Database":
     st.markdown("### ⚙️ Database Management")
-    st.warning("Action: Data deletion is permanent.")
+    st.warning("⚠️ Action: Data deletion is permanent.")
+    
     if not df_research.empty:
-        to_del = st.selectbox("Select title to remove:", sorted(df_research["ชื่อเรื่อง"].unique()))
-        if st.button("🗑 Delete Selected Entry"):
-            client = conn_sheets()
-            sh = client.open("Research_Database")
-            ws = sh.worksheet("research")
-            try:
-                # แก้ไขการลบ: ค้นหาทุกบรรทัดที่เป็นชื่อเรื่องนี้ (กรณีผู้เขียนหลายคน)
-                cells = ws.findall(to_del)
-                # ลบจากล่างขึ้นบนเพื่อไม่ให้ตำแหน่งแถวเลื่อน
-                rows_to_del = sorted([c.row for c in cells], reverse=True)
-                for r in rows_to_del:
-                    ws.delete_rows(r)
-                st.success(f"Removed all entries for: {to_del}")
-                st.cache_data.clear()
-                st.rerun()
-            except:
-                st.error("Could not locate entry in Sheet.")
+        # เตรียมตารางรายละเอียดสำหรับดูข้อมูลก่อนลบ
+        df_manage = df_research.drop_duplicates(subset=['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']).copy()
+        df_manage = df_manage[['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']].sort_values(by=['ปี', 'ชื่อเรื่อง'], ascending=[False, True])
+        
+        st.markdown("##### 🔍 Research Records List")
+        st.dataframe(df_manage, use_container_width=True, hide_index=True)
+
+        # ส่วนการเลือกเพื่อลบ
+        titles_list = df_manage.apply(lambda x: f"[{x['ปี']}] {x['ชื่อเรื่อง']} ({x['ฐานวารสาร']})", axis=1).tolist()
+        to_del_display = st.selectbox("Select exact entry to delete:", ["-- Select --"] + titles_list)
+
+        if to_del_display != "-- Select --":
+            # แกะชื่อเรื่องที่แท้จริงออกมาเพื่อใช้ลบใน Google Sheets
+            actual_title = to_del_display.split("] ")[1].rsplit(" (", 1)[0]
+            if st.button("🗑 Confirm Permanent Delete"):
+                client = conn_sheets()
+                ws = client.open("Research_Database").worksheet("research")
+                try:
+                    cells = ws.findall(actual_title)
+                    rows_to_del = sorted([c.row for c in cells], reverse=True)
+                    for r in rows_to_del: ws.delete_rows(r)
+                    st.success(f"Removed: {actual_title}")
+                    st.cache_data.clear()
+                    st.rerun()
+                except: st.error("Error during deletion.")
+    else: st.info("No records to manage.")
