@@ -76,7 +76,7 @@ PROGRAM_DATA = [
 df_structure = pd.DataFrame(PROGRAM_DATA)
 FIXED_FAC_MEMBERS = {
     "มนุษย์ศาสตร์และสังคมศาสตร์": 15, "คณะศึกษาศาสตร์": 42,
-    "คณะบริหารธุรกิจบัณฑิต": 40, "คณะสาธารณสุขศาสตร์": 18, "คณะพยาบาลศาสตร์": 15
+    "คณะบริหารธุรกิจบัณฑิต": 40, "คณะสาธารณสุขศาสตร์": 15, "คณะพยาบาลศาสตร์": 56
 }
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
 
@@ -232,3 +232,4 @@ elif menu == "⚙️ Manage Database":
         ws = client.open("Research_Database").worksheet("research")
         ws.delete_rows(int(row_idx))
         st.success(f"Row {row_idx} deleted!"); st.rerun()
+
