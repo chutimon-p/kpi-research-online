@@ -105,7 +105,7 @@ df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fi
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
 
 # ==========================================
-# 3. Sidebar & Navigation
+# 3. Sidebar
 # ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -145,32 +145,28 @@ if menu == "📊 Dashboard & Reports":
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # 🔗 เชื่อมข้อมูลงานวิจัยกับ Master Data
-    df_full_info = df_filtered.merge(
+    # --- ตรรกะสำคัญ: ตัดเรื่องซ้ำออกให้เหลือ 1 เรื่องต่อ 1 Record เพื่อใช้คำนวณระดับหน่วยงาน ---
+    # เราจะเก็บคนแรกที่เจอไว้เพื่อระบุว่าเรื่องนี้สังกัดหลักสูตร/คณะไหน (ตามฐานข้อมูล)
+    df_unique_research = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
+    
+    # เชื่อมข้อมูลเพื่อให้รู้สังกัดของงานวิจัยแต่ละเรื่อง (Unique Title)
+    df_agency_data = df_unique_research.merge(
         df_master[['Name-surname', 'คณะ', 'หลักสูตร']], 
         left_on="ผู้เขียน", 
         right_on="Name-surname", 
         how="left"
     )
-
-    # --- หัวใจสำคัญ: การจัดการเรื่องซ้ำ (Deduplication) ---
-    # 1. สำหรับสถิติรวมมหาวิทยาลัย (นับ 1 เรื่อง ต่อ 1 คะแนนแน่นอน)
-    df_unique_total = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
     
-    # 2. สำหรับ Program/Faculty KPI: นับ 1 เรื่องต่อ 1 หน่วยงาน 
-    # (หากคนละหลักสูตรเขียนด้วยกัน งานวิจัยเรื่องนั้นจะถูกนับให้ทั้ง 2 หลักสูตร แต่ถ้าหลักสูตรเดียวกันจะถูกนับเพียง 1)
-    df_unique_agency = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
-
     m1, m2, m3 = st.columns(3)
-    m1.metric("Total Publications", f"{len(df_unique_total)} Titles")
+    m1.metric("Total Publications", f"{len(df_unique_research)} Titles")
     m2.metric("Active Researchers", f"{df_filtered['ผู้เขียน'].nunique()} Persons")
-    m3.metric("Weighted Score Sum", f"{df_unique_total['คะแนน'].sum():.2f}")
+    m3.metric("Weighted Score Sum", f"{df_unique_research['คะแนน'].sum():.2f}")
 
     t0, t1, t2, t3, t4 = st.tabs(["🏛 Overview", "🎓 Program KPI", "👤 Researcher Profile", "🏢 Faculty KPI", "📋 Master Database"])
 
     with t0:
         st.markdown("#### 🌍 University Growth")
-        inst_summary = df_unique_total.groupby("ปี").agg(
+        inst_summary = df_unique_research.groupby("ปี").agg(
             Titles=("ชื่อเรื่อง", "count"), Total_Weight=("คะแนน", "sum")
         ).reset_index().sort_values("ปี")
         inst_summary = inst_summary[inst_summary['ปี'] > 0]
@@ -181,13 +177,15 @@ if menu == "📊 Dashboard & Reports":
         st.plotly_chart(fig_inst, use_container_width=True)
 
     with t1:
-        st.markdown("#### 🏆 Program KPI Achievement")
+        st.markdown("#### 🏆 Program KPI Achievement (No Duplicates)")
         all_progs = df_master[["หลักสูตร", "คณะ"]].drop_duplicates().dropna()
         all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
+        
+        # จำนวนอาจารย์ในหลักสูตร
         prog_member_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
 
-        # คำนวณรายหลักสูตร (ใช้ df_unique_agency เพื่อแก้ปัญหาเรื่องซ้ำในหลักสูตร BE)
-        prog_summary = df_unique_agency.groupby("หลักสูตร").agg(
+        # คำนวณจาก df_agency_data (ซึ่งถูก drop duplicate ชื่อเรื่องไปแล้ว)
+        prog_summary = df_agency_data.groupby("หลักสูตร").agg(
             Total_Score=("คะแนน", "sum"), 
             Total_Titles=("ชื่อเรื่อง", "count")
         ).reset_index()
@@ -203,10 +201,10 @@ if menu == "📊 Dashboard & Reports":
 
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
         
-        # กราฟ KPI Score
         st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
         
-        st.markdown("#### 📊 Volume vs. Score (Deduplicated)")
+        st.divider()
+        st.markdown("#### 📊 Volume vs. Score (By Program)")
         fig_p_comp = go.Figure()
         fig_p_comp.add_trace(go.Bar(x=prog_report["หลักสูตร"], y=prog_report["Total_Titles"], name="Titles", marker_color='#3B82F6'))
         fig_p_comp.add_trace(go.Bar(x=prog_report["หลักสูตร"], y=prog_report["Total_Score"], name="Score", marker_color='#1E3A8A'))
@@ -214,7 +212,7 @@ if menu == "📊 Dashboard & Reports":
         st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t2:
-        st.markdown("#### 👤 Researcher Portfolio")
+        st.markdown("#### 👤 Researcher Portfolio (Individual Analysis)")
         search_author = st.selectbox("🔍 Select Researcher:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
         if search_author != "-- Select --":
             author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].copy().sort_values("ปี", ascending=False)
@@ -225,13 +223,12 @@ if menu == "📊 Dashboard & Reports":
                 c2.dataframe(author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
 
     with t3:
-        st.markdown("#### 🏢 Faculty KPI Performance")
-        if not df_full_info.empty:
+        st.markdown("#### 🏢 Faculty KPI Performance (No Duplicates)")
+        if not df_agency_data.empty:
             fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
             
-            # ตัดเรื่องซ้ำระดับคณะ (ถ้าอยู่คณะเดียวกันนับเป็น 1)
-            res_fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
-            fac_sum = res_fac_unique.groupby("คณะ").agg(
+            # คำนวณจาก df_agency_data (ซึ่งถูก drop duplicate ชื่อเรื่องไปแล้ว)
+            fac_sum = df_agency_data.groupby("คณะ").agg(
                 Total_Score=("คะแนน", "sum"), 
                 Total_Titles=("ชื่อเรื่อง", "count")
             ).reset_index()
