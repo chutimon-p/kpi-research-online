@@ -45,88 +45,56 @@ def save_to_sheet(sheet_name, new_row_dict):
         worksheet.append_row(list(new_row_dict.values()))
 
 # ==========================================
-# 2. Page Configuration & Ultra-Clear UI
+# 2. Page Configuration & Improved UI
 # ==========================================
 st.set_page_config(page_title="Research Management - STIU", layout="wide")
 
 st.markdown("""
     <style>
-    /* 1. ปรับแต่งตัวเลข Metric */
-    [data-testid="stMetricValue"] { 
-        font-size: 2.2rem; 
-        color: #60A5FA; 
-        font-weight: 800;
-    }
+    [data-testid="stMetricValue"] { font-size: 1.8rem; color: #60A5FA; }
     .stMetric {
         background-color: rgba(100, 116, 139, 0.1); 
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        border-left: 6px solid #3B82F6;
-    }
-    
-    /* 2. ปรับแต่ง Tab ให้ใหญ่และเด่นชัดเป็นพิเศษ */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 15px;
-        background-color: rgba(15, 23, 42, 0.8); 
-        padding: 10px 15px;
-        border-radius: 15px;
-        border-bottom: 2px solid rgba(59, 130, 246, 0.3);
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        height: 65px; 
-        background-color: transparent;
+        padding: 15px;
         border-radius: 10px;
-        padding: 0px 30px; 
-        color: #94A3B8;
-        font-size: 1.15rem !important; 
-        font-weight: 700 !important;
-        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 5px solid #3B82F6;
     }
-
-    /* เมื่อเลือก Tab (Active State) */
-    .stTabs [aria-selected="true"] {
-        background-color: #3B82F6 !important; 
-        color: white !important;
-        font-size: 1.25rem !important;
-        font-weight: 800 !important;
-        box-shadow: 0 5px 20px rgba(59, 130, 246, 0.5);
-        transform: translateY(-3px);
-    }
-    
-    /* 3. สไตล์การ์ด Ranking */
     .ranking-card {
-        background-color: rgba(255, 255, 255, 0.07); 
-        padding: 25px; 
-        border-radius: 15px; 
-        box-shadow: 0 6px 12px rgba(0,0,0,0.3); 
-        text-align: center;
+        background-color: rgba(255, 255, 255, 0.05); 
+        padding: 20px; border-radius: 12px; 
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
+        text-align: center; margin-bottom: 15px;
         border: 1px solid rgba(255, 255, 255, 0.1);
     }
-
-    h1, h2, h3, h4 { color: #60A5FA !important; font-weight: 800; }
+    h1, h2, h3, h4 { color: #60A5FA !important; }
+    .stTabs [data-baseweb="tab"] {
+        height: 45px; background-color: rgba(100, 116, 139, 0.05);
+        border-radius: 8px 8px 0 0; padding: 10px 15px; color: #94A3B8;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #3B82F6 !important; color: white !important; font-weight: bold;
+    }
     html, body, [class*="css"] { font-family: 'Sarabun', sans-serif; }
     </style>
     """, unsafe_allow_html=True)
 
-# Header Section
+# Header Setup
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
-    try: st.image("logo.jpg", width=150)
+    try: st.image("logo.jpg", width=140)
     except: st.info("🏫 STIU LOGO")
 
 with header_col2:
     st.markdown("""
-        <div style="padding-top: 15px;">
-            <h1 style="margin-bottom: 0px; font-size: 2.5rem;">St Teresa International University</h1>
-            <p style="color: #94A3B8; font-size: 1.3rem; margin-top: 0px;">Research Management & KPI Tracking System</p>
+        <div style="padding-top: 10px;">
+            <h1 style="margin-bottom: 0px;">St Teresa International University</h1>
+            <p style="color: #94A3B8; font-size: 1.1rem; margin-top: 0px;">Research Management & KPI Tracking System</p>
         </div>
     """, unsafe_allow_html=True)
 
 st.divider()
 
-# Load Data
+# Load & Clean Data
 ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD")
 df_master = load_sheet_data("masters")
 df_research = load_sheet_data("research")
@@ -135,7 +103,6 @@ if df_master.empty or df_research.empty:
     st.warning("⚠️ Accessing Google Sheets... Please wait.")
     st.stop()
 
-# Data Cleaning
 df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
 df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
@@ -173,10 +140,9 @@ if menu == "📊 Dashboard & Reports":
     df_unique_total = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
     df_unique_agency = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
 
-    # Big Tabs
     t0, t1, t2, t3, t4, t5, t6 = st.tabs([
-        "🏛 OVERVIEW", "🎓 PROGRAM KPI", "👤 RESEARCHER PROFILE", 
-        "🏢 FACULTY KPI", "📋 MASTER DB", "🔍 VERIFICATION", "🚀 IMPROVEMENT PLAN"
+        "🏛 Overview", "🎓 Program KPI", "👤 Researcher Profile", 
+        "🏢 Faculty KPI", "📋 Master Database", "🔍 Verification", "🚀 KPI Improvement Plan"
     ])
 
     with t0:
@@ -185,7 +151,7 @@ if menu == "📊 Dashboard & Reports":
         inst_summary = inst_summary[inst_summary['ปี'] > 0].sort_values("ปี")
         fig_inst = go.Figure()
         fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Titles", marker_color='#3B82F6'))
-        fig_inst.add_trace(go.Scatter(x=inst_summary["ปี"], y=inst_summary["Total_Weight"], name="Weight", yaxis="y2", line=dict(color='#F43F5E', width=4)))
+        fig_inst.add_trace(go.Scatter(x=inst_summary["ปี"], y=inst_summary["Total_Weight"], name="Weight", yaxis="y2", line=dict(color='#F43F5E', width=3)))
         fig_inst.update_layout(yaxis2=dict(overlaying="y", side="right"), template="plotly_dark")
         st.plotly_chart(fig_inst, use_container_width=True)
 
@@ -205,7 +171,7 @@ if menu == "📊 Dashboard & Reports":
         st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", template="plotly_dark").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
 
     with t2:
-        st.markdown("#### 🏆 Top 3 Researchers (Ranking)")
+        st.markdown("#### 🏆 Top 3 Researchers")
         author_rank = df_filtered.groupby("ผู้เขียน")["คะแนน"].sum().reset_index().sort_values("คะแนน", ascending=False).head(3)
         r_cols = st.columns(3)
         medals = ["🥇 1st Place", "🥈 2nd Place", "🥉 3rd Place"]
@@ -213,9 +179,9 @@ if menu == "📊 Dashboard & Reports":
         for i, (col, medal) in enumerate(zip(r_cols, medals)):
             if i < len(author_rank):
                 row = author_rank.iloc[i]
-                col.markdown(f'<div class="ranking-card" style="border-top: 6px solid {m_colors[i]};"><h2 style="color:{m_colors[i]}!important;">{medal}</h2><p style="font-size:1.3rem;"><b>{row["ผู้เขียน"]}</b></p>Score: <span style="color:#60A5FA;font-weight:800;">{row["คะแนน"]:.2f}</span></div>', unsafe_allow_html=True)
+                col.markdown(f'<div class="ranking-card" style="border-top: 5px solid {m_colors[i]};"><h3>{medal}</h3><b>{row["ผู้เขียน"]}</b><br>Score: {row["คะแนน"]:.2f}</div>', unsafe_allow_html=True)
         st.divider()
-        search_author = st.selectbox("🔍 Search Researcher Portfolio:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
+        search_author = st.selectbox("🔍 Search Researcher:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
         if search_author != "-- Select --":
             author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].sort_values("ปี", ascending=False)
             st.dataframe(author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
@@ -237,49 +203,55 @@ if menu == "📊 Dashboard & Reports":
     with t5:
         st.markdown("#### 🔍 Verification (Audit Trail)")
         audit_mode = st.radio("Mode:", ["Program", "Faculty"], horizontal=True)
-        target = st.selectbox("Select Target:", sorted(df_master["หลักสูตร" if audit_mode == "Program" else "คณะ"].unique().tolist()))
-        if target:
-            audit_df = df_unique_agency if audit_mode == "Program" else df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
-            st.dataframe(audit_df[audit_df["หลักสูตร" if audit_mode == "Program" else "คณะ"] == target], use_container_width=True)
+        if audit_mode == "Program":
+            target = st.selectbox("Select Program:", sorted(df_master["หลักสูตร"].unique().tolist()))
+            if target:
+                prog_audit = df_unique_agency[df_unique_agency["หลักสูตร"] == target].copy()
+                st.dataframe(prog_audit[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True)
+        else:
+            target = st.selectbox("Select Faculty:", sorted(df_master["คณะ"].unique().tolist()))
+            if target:
+                fac_audit = df_full_info[df_full_info["คณะ"] == target].drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
+                st.dataframe(fac_audit[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True)
 
     with t6:
         st.markdown("#### 🚀 KPI Improvement Plan (Road to 5.0)")
-        p_mode = st.radio("ระดับการวางแผน:", ["รายหลักสูตร", "รายคณะ"], horizontal=True)
+        plan_mode = st.radio("วางแผนระดับ:", ["รายหลักสูตร", "รายคณะ"], horizontal=True)
         
-        def run_plan(name, current_sum, n, x_y):
+        def show_plan(name, current_sum, n, x_y):
             required_sum = (x_y * n) / 100
             gap = max(required_sum - current_sum, 0.0)
             current_kpi = min((((current_sum / n) * 100) / x_y) * 5, 5.0)
             
-            st.subheader(f"📊 {name}")
+            st.subheader(f"📊 สรุปเป้าหมาย: {name}")
             c1, c2, c3 = st.columns(3)
-            c1.metric("KPI Current", f"{current_kpi:.2f}")
-            c2.metric("Weight Score Needed", f"{gap:.2f}")
-            c3.metric("Staff Count (n)", n)
+            c1.metric("KPI ปัจจุบัน", f"{current_kpi:.2f}")
+            c2.metric("คะแนนที่ต้องทำเพิ่ม", f"{gap:.2f}")
+            c3.metric("ตัวหาร (n)", n)
             
             if gap > 0:
-                st.markdown(f"#### 📝 ต้องทำวิจัยเพิ่มจำนวน (เรื่อง):")
+                st.info(f"💡 เพื่อให้ได้ KPI 5.0 คุณต้องผลิตงานวิจัยเพิ่มที่มีคะแนนรวมอย่างน้อย **{gap:.2f}**")
                 sc, t1, t2 = st.columns(3)
-                sc.success(f"**Scopus**\n\n {math.ceil(gap/1.0)} เรื่อง")
-                t1.success(f"**TCI 1**\n\n {math.ceil(gap/0.8)} เรื่อง")
-                t2.success(f"**TCI 2**\n\n {math.ceil(gap/0.6)} เรื่อง")
-            else: st.balloons(); st.success("✅ บรรลุเป้าหมาย 5.0 เรียบร้อยแล้ว!")
+                sc.success(f"**Scopus / Q1-4**\n\n{math.ceil(gap/1.0)} เรื่อง")
+                t1.success(f"**TCI Group 1**\n\n{math.ceil(gap/0.8)} เรื่อง")
+                t2.success(f"**TCI Group 2**\n\n{math.ceil(gap/0.6)} เรื่อง")
+            else: st.balloons(); st.success("🎉 บรรลุเป้าหมาย KPI 5.0 แล้ว!")
 
-        if p_mode == "รายหลักสูตร":
-            sel = st.selectbox("เลือกหลักสูตร:", sorted(df_master["หลักสูตร"].unique().tolist()))
+        if plan_mode == "รายหลักสูตร":
+            sel = st.selectbox("เลือกหลักสูตร:", sorted(df_master["หลักสูตร"].unique().tolist()), key="p1")
             if sel:
                 curr = df_unique_agency[df_unique_agency["หลักสูตร"] == sel]["คะแนน"].sum()
                 n = df_master[df_master["หลักสูตร"] == sel]["Name-surname"].nunique()
                 g40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
                 x = 60 if sel == "Ph.D-Admin" else (40 if sel in g40 else 20)
-                run_plan(sel, curr, n, x)
+                show_plan(sel, curr, n, x)
         else:
-            sel = st.selectbox("เลือกคณะ:", sorted(df_master["คณะ"].unique().tolist()))
+            sel = st.selectbox("เลือกคณะ:", sorted(df_master["คณะ"].unique().tolist()), key="p2")
             if sel:
                 curr = df_full_info[df_full_info["คณะ"] == sel].drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])["คะแนน"].sum()
                 n = df_master[df_master["คณะ"] == sel]["Name-surname"].nunique()
                 y = 30 if sel in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
-                run_plan(sel, curr, n, y)
+                show_plan(sel, curr, n, y)
 
 # ==========================================
 # 5. Admin Sections
