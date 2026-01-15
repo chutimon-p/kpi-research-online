@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # ==========================================
-# 1. Database Connection (โครงเดิม)
+# 1. Database Connection (โครงเดิมของคุณ)
 # ==========================================
 @st.cache_resource
 def conn_sheets():
@@ -43,7 +43,7 @@ def save_to_sheet(sheet_name, new_row_dict):
         worksheet.append_row(list(new_row_dict.values()))
 
 # ==========================================
-# 2. FIXED VALUES (ตัวหารค่าคงที่ตาม Excel)
+# 2. FIXED VALUES (ค่าคงที่จาก Excel)
 # ==========================================
 FIXED_PROG_MEMBERS = {
     "BE": 5, "CA": 5, "B.Ed-Math": 5, "B.Ed-Sci": 5, "B.Ed-Eng": 5, "B.Ed-EC": 5,
@@ -63,11 +63,10 @@ FIXED_FAC_MEMBERS = {
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
 
 # ==========================================
-# 3. Page Configuration & Header
+# 3. Page Configuration (โครงเดิม)
 # ==========================================
 st.set_page_config(page_title="Research Management - STIU", layout="wide")
 
-# (ส่วน CSS สไตล์เดิมของคุณ)
 st.markdown("""
     <style>
     [data-testid="stMetricValue"] { font-size: 1.8rem; color: #1E3A8A; }
@@ -84,40 +83,38 @@ if df_master.empty or df_research.empty:
     st.warning("⚠️ Accessing Google Sheets... Please wait.")
     st.stop()
 
-# --- จุดแก้ไข: ป้องกันข้อมูลไม่ขึ้นด้วยการบังคับ Type และลบช่องว่าง ---
+# --- บังคับให้ชื่อตรงกันและลบช่องว่างเพื่อป้องกันข้อมูลไม่ขึ้น ---
 df_research['ผู้เขียน'] = df_research['ผู้เขียน'].astype(str).str.strip()
 df_master['Name-surname'] = df_master['Name-surname'].astype(str).str.strip()
 df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
 df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
 
 # ==========================================
-# 4. Sidebar & Logic การกรอง
+# 4. Sidebar & Menu (โครงเดิม)
 # ==========================================
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 with st.sidebar:
-    st.markdown("### 🧭 Navigation")
     menu_options = ["📊 Dashboard & Reports"]
     if st.session_state.logged_in:
         menu_options.insert(0, "✍️ Submit Research")
         menu_options.append("⚙️ Manage Database")
-    
     menu = st.radio("Go to Page:", menu_options)
     
-    # (ส่วน Login/Logout เดิม)
+    # Year Filter
     all_years = sorted(df_research[df_research["ปี"] > 0]["ปี"].unique().tolist())
     year_option = st.selectbox("📅 Year Filter:", ["All Years"] + [str(y) for y in all_years])
 
 # ==========================================
-# 5. Dashboard (ปรับปรุงการคำนวณ)
+# 5. Dashboard (ปรับปรุงตรรกะการคำนวณ)
 # ==========================================
 if menu == "📊 Dashboard & Reports":
     df_filtered = df_research.copy()
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # เชื่อมข้อมูลสังกัด (ถ้าชื่อสะกดตรง ข้อมูลจะขึ้นที่นี่)
+    # Merge ข้อมูลสังกัด
     df_full_info = df_filtered.merge(
         df_master[['Name-surname', 'คณะ', 'หลักสูตร']], 
         left_on="ผู้เขียน", 
@@ -129,40 +126,42 @@ if menu == "📊 Dashboard & Reports":
 
     with t1:
         st.markdown("#### 🏆 Program KPI Achievement")
-        # กรอง 1 เรื่องนับ 1 ครั้งต่อหลักสูตร
+        # 1 เรื่องนับ 1 ครั้งต่อหลักสูตร
         prog_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
         prog_summary = prog_unique.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum")).reset_index()
         
-        # สร้างตารางหลักสูตรทั้งหมดจากค่าคงที่
-        report = pd.DataFrame(list(FIXED_PROG_MEMBERS.keys()), columns=["หลักสูตร"])
-        report = report.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
+        # แสดงผลทุกหลักสูตรตาม FIXED_PROG_MEMBERS
+        prog_report = pd.DataFrame(list(FIXED_PROG_MEMBERS.keys()), columns=["หลักสูตร"])
+        prog_report = prog_report.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
 
         def calc_kpi(row):
-            n = FIXED_PROG_MEMBERS.get(row["หลักสูตร"], 1) # ใช้ค่าคงที่ n
+            n = FIXED_PROG_MEMBERS.get(row["หลักสูตร"], 1)
             group_40 = ["G-Dip TH", "G-Dip Inter", "M.Ed-Admin", "M.Ed-LMS", "MBA", "MPH"]
             x = 60 if row["หลักสูตร"] == "Ph.D-Admin" else (40 if row["หลักสูตร"] in group_40 else 20)
-            score = (((row["Total_Score"] / n) * 100) / x) * 5
-            return round(score, 2)
+            return round((((row["Total_Score"] / n) * 100) / x) * 5, 2)
 
-        report["KPI Score"] = report.apply(calc_kpi, axis=1)
-        st.plotly_chart(px.bar(report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", orientation='h', text="KPI Score"), use_container_width=True)
-        st.dataframe(report.sort_values("KPI Score", ascending=False), use_container_width=True)
+        prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
+        st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", orientation='h', text="KPI Score", height=600), use_container_width=True)
+        st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t3:
         st.markdown("#### 🏢 Faculty KPI Performance")
         fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
         fac_summary = fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum")).reset_index()
         
-        report_f = pd.DataFrame(list(FIXED_FAC_MEMBERS.keys()), columns=["คณะ"])
-        report_f = report_f.merge(fac_summary, on="คณะ", how="left").fillna(0)
+        fac_report = pd.DataFrame(list(FIXED_FAC_MEMBERS.keys()), columns=["คณะ"])
+        fac_report = fac_report.merge(fac_summary, on="คณะ", how="left").fillna(0)
 
         def calc_fac_kpi(row):
-            n = FIXED_FAC_MEMBERS.get(row["คณะ"], 1) # ใช้ค่าคงที่ n
+            n = FIXED_FAC_MEMBERS.get(row["คณะ"], 1)
             y = 30 if row["คณะ"] in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์", "คณะสาธารณสุข"] else 20
-            score = (((row["Total_Score"] / n) * 100) / y) * 5
-            return round(score, 2)
+            return round((((row["Total_Score"] / n) * 100) / y) * 5, 2)
 
-        report_f["Faculty KPI Score"] = report_f.apply(calc_fac_kpi, axis=1)
-        st.plotly_chart(px.bar(report_f, x="Faculty KPI Score", y="คณะ", orientation='h', text="Faculty KPI Score"), use_container_width=True)
+        fac_report["Faculty KPI Score"] = fac_report.apply(calc_fac_kpi, axis=1)
+        st.plotly_chart(px.bar(fac_report.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', text="Faculty KPI Score"), use_container_width=True)
+        st.dataframe(fac_report, use_container_width=True, hide_index=True)
 
-    # (ส่วน Tab อื่นๆ และ Admin Page ให้ใช้โค้ดเดิมของคุณได้เลย)
+    with t4:
+        st.dataframe(df_master, use_container_width=True, hide_index=True)
+
+# ส่วน Submit Research และ Manage Database คงเดิมตามโครงสร้างของคุณ...
