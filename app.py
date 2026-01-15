@@ -20,6 +20,7 @@ def conn_sheets():
         st.error(f"❌ Connection Failed: {e}")
         return None
 
+@st.cache_data(ttl=600) # เพิ่ม Cache เพื่อความเร็วในการโหลด
 def load_sheet_data(sheet_name):
     client = conn_sheets()
     if client:
@@ -145,7 +146,6 @@ if menu == "📊 Dashboard & Reports":
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # 🔗 เชื่อมข้อมูลงานวิจัยกับ Master Data
     df_full_info = df_filtered.merge(
         df_master[['Name-surname', 'คณะ', 'หลักสูตร']], 
         left_on="ผู้เขียน", 
@@ -153,12 +153,7 @@ if menu == "📊 Dashboard & Reports":
         how="left"
     )
 
-    # --- หัวใจสำคัญ: การจัดการเรื่องซ้ำ (Deduplication) ---
-    # 1. สำหรับสถิติรวมมหาวิทยาลัย (นับ 1 เรื่อง ต่อ 1 คะแนนแน่นอน)
     df_unique_total = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
-    
-    # 2. สำหรับ Program/Faculty KPI: นับ 1 เรื่องต่อ 1 หน่วยงาน 
-    # (หากคนละหลักสูตรเขียนด้วยกัน งานวิจัยเรื่องนั้นจะถูกนับให้ทั้ง 2 หลักสูตร แต่ถ้าหลักสูตรเดียวกันจะถูกนับเพียง 1)
     df_unique_agency = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
 
     m1, m2, m3 = st.columns(3)
@@ -166,7 +161,15 @@ if menu == "📊 Dashboard & Reports":
     m2.metric("Active Researchers", f"{df_filtered['ผู้เขียน'].nunique()} Persons")
     m3.metric("Weighted Score Sum", f"{df_unique_total['คะแนน'].sum():.2f}")
 
-    t0, t1, t2, t3, t4 = st.tabs(["🏛 Overview", "🎓 Program KPI", "👤 Researcher Profile", "🏢 Faculty KPI", "📋 Master Database"])
+    # --- Tabs Definition ---
+    t0, t1, t2, t3, t4, t5 = st.tabs([
+        "🏛 Overview", 
+        "🎓 Program KPI", 
+        "👤 Researcher Profile", 
+        "🏢 Faculty KPI", 
+        "📋 Master Database",
+        "🔍 Verification" # Tab ตรวจสอบ
+    ])
 
     with t0:
         st.markdown("#### 🌍 University Growth")
@@ -186,7 +189,6 @@ if menu == "📊 Dashboard & Reports":
         all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
         prog_member_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
 
-        # คำนวณรายหลักสูตร (ใช้ df_unique_agency เพื่อแก้ปัญหาเรื่องซ้ำในหลักสูตร BE)
         prog_summary = df_unique_agency.groupby("หลักสูตร").agg(
             Total_Score=("คะแนน", "sum"), 
             Total_Titles=("ชื่อเรื่อง", "count")
@@ -202,15 +204,7 @@ if menu == "📊 Dashboard & Reports":
             return round(min(score, 5.0), 2)
 
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
-        
-        # กราฟ KPI Score
         st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
-        
-        st.markdown("#### 📊 Volume vs. Score (Deduplicated)")
-        fig_p_comp = go.Figure()
-        fig_p_comp.add_trace(go.Bar(x=prog_report["หลักสูตร"], y=prog_report["Total_Titles"], name="Titles", marker_color='#3B82F6'))
-        fig_p_comp.add_trace(go.Bar(x=prog_report["หลักสูตร"], y=prog_report["Total_Score"], name="Score", marker_color='#1E3A8A'))
-        st.plotly_chart(fig_p_comp.update_layout(barmode='group', xaxis_tickangle=-45, template="plotly_white"), use_container_width=True)
         st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t2:
@@ -228,8 +222,6 @@ if menu == "📊 Dashboard & Reports":
         st.markdown("#### 🏢 Faculty KPI Performance")
         if not df_full_info.empty:
             fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
-            
-            # ตัดเรื่องซ้ำระดับคณะ (ถ้าอยู่คณะเดียวกันนับเป็น 1)
             res_fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
             fac_sum = res_fac_unique.groupby("คณะ").agg(
                 Total_Score=("คะแนน", "sum"), 
@@ -244,18 +236,49 @@ if menu == "📊 Dashboard & Reports":
                 return round(min(score, 5.0), 2)
 
             fac_sum["Faculty KPI Score"] = fac_sum.apply(calc_fac_kpi, axis=1)
-            
             st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", color="คณะ", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
-            
-            st.markdown("#### 📊 Faculty Volume vs. Score")
-            fig_f_comp = go.Figure()
-            fig_f_comp.add_trace(go.Bar(x=fac_sum["คณะ"], y=fac_sum["Total_Titles"], name="Titles", marker_color='#60A5FA'))
-            fig_f_comp.add_trace(go.Bar(x=fac_sum["คณะ"], y=fac_sum["Total_Score"], name="Score", marker_color='#1D4ED8'))
-            st.plotly_chart(fig_f_comp.update_layout(barmode='group', template="plotly_white"), use_container_width=True)
             st.dataframe(fac_sum.sort_values("Faculty KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t4:
         st.dataframe(df_master, use_container_width=True, hide_index=True)
+
+    with t5:
+        st.markdown("#### 🔍 KPI Calculation Audit Trail")
+        st.info("หน้านี้ใช้สำหรับตรวจสอบที่มาของคะแนน เพื่อความโปร่งใสในการคำนวณ")
+        
+        check_prog_list = sorted(df_master["หลักสูตร"].unique().tolist())
+        target_prog = st.selectbox("เลือกหลักสูตรที่ต้องการตรวจสอบละเอียด:", check_prog_list)
+        
+        if target_prog:
+            # กรองงานวิจัยที่ถูกนับให้หลักสูตรนี้ (Deduplicated)
+            prog_audit_data = df_unique_agency[df_unique_agency["หลักสูตร"] == target_prog].copy()
+            
+            # ดึงรายชื่ออาจารย์ในหลักสูตร
+            members_in_prog = df_master[df_master["หลักสูตร"] == target_prog]["Name-surname"].unique().tolist()
+            n_count = len(members_in_prog)
+            
+            group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
+            target_x = 60 if target_prog == "Ph.D-Admin" else (40 if target_prog in group_40 else 20)
+            sum_score = prog_audit_data["คะแนน"].sum()
+            
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("ผลรวมคะแนน (A)", f"{sum_score:.2f}")
+            c2.metric("จำนวนอาจารย์ (n)", n_count)
+            c3.metric("เกณฑ์เป้าหมาย (x)", f"{target_x}%")
+            
+            final_calc = (((sum_score / n_count) * 100) / target_x) * 5
+            c4.metric("คะแนน KPI สุทธิ", f"{min(final_calc, 5.0):.2f} / 5.0")
+            
+            col_list, col_member = st.columns([2, 1])
+            with col_list:
+                st.subheader("📋 รายการงานวิจัยที่ถูกนำมาคำนวณ")
+                if not prog_audit_data.empty:
+                    st.dataframe(prog_audit_data[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
+                else:
+                    st.warning("ไม่พบข้อมูลงานวิจัยในหลักสูตรนี้")
+            with col_member:
+                st.subheader("👥 รายชื่ออาจารย์ (ตัวหาร n)")
+                st.write(members_in_prog)
 
 # ==========================================
 # 5. Admin Sections
@@ -286,11 +309,12 @@ elif menu == "⚙️ Manage Database":
         opts = ["-- Select --"] + [f"{r['ปี']} | {r['ชื่อเรื่อง']} | {r['ฐานวารสาร']}" for _, r in df_manage.iterrows()]
         sel = st.selectbox("Delete Entry:", opts)
         if sel != "-- Select --":
-            target = sel.split(" | ")[1].strip()
+            # ป้องกัน Error หากชื่อเรื่องมีเครื่องหมาย |
+            parts = sel.split(" | ")
+            target = parts[1].strip()
             if st.button("Confirm Delete"):
                 with st.spinner("Deleting..."):
                     ws = conn_sheets().open("Research_Database").worksheet("research")
                     rows = [i + 2 for i, row in enumerate(ws.get_all_records()) if str(row.get('ชื่อเรื่อง')).strip() == target]
                     for r in sorted(rows, reverse=True): ws.delete_rows(r)
                     st.success("Deleted!"); st.cache_data.clear(); st.rerun()
-
