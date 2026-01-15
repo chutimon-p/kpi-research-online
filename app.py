@@ -145,9 +145,17 @@ if menu == "📊 Dashboard & Reports":
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
+    # ดึงข้อมูลคณะและหลักสูตรมาไว้ในตารางงานวิจัยตั้งแต่แรกเพื่อป้องกัน Error
+    df_full_info = df_filtered.merge(
+        df_master[['Name-surname', 'คณะ', 'หลักสูตร']], 
+        left_on="ผู้เขียน", 
+        right_on="Name-surname", 
+        how="left"
+    )
+    
     m1, m2, m3 = st.columns(3)
-    unique_titles = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
-    m1.metric("Total Publications", f"{len(unique_titles)} Titles")
+    unique_titles_summary = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
+    m1.metric("Total Publications", f"{len(unique_titles_summary)} Titles")
     m2.metric("Active Researchers", f"{df_filtered['ผู้เขียน'].nunique()} Persons")
     m3.metric("Weighted Score Sum", f"{df_filtered['คะแนน'].sum():.2f}")
 
@@ -171,8 +179,11 @@ if menu == "📊 Dashboard & Reports":
         all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
         faculty_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
 
-        prog_data = df_filtered.merge(df_master[['Name-surname', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
-        prog_summary = prog_data.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum"), Total_Titles=("ชื่อเรื่อง", "nunique")).reset_index()
+        # คำนวณรายหลักสูตร
+        prog_summary = df_full_info.groupby("หลักสูตร").agg(
+            Total_Score=("คะแนน", "sum"), 
+            Total_Titles=("ชื่อเรื่อง", "nunique")
+        ).reset_index()
         prog_report = all_progs.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
 
         def calc_kpi(row):
@@ -209,29 +220,39 @@ if menu == "📊 Dashboard & Reports":
 
     with t3:
         st.markdown("#### 🏢 Faculty KPI Performance")
-        fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
-        res_fac_unique = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
-        fac_sum = res_fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum"), Total_Titles=("ชื่อเรื่อง", "count")).reset_index()
+        if not df_full_info.empty:
+            # นับจำนวนอาจารย์แยกคณะจาก Master
+            fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
+            
+            # นับเฉพาะเรื่องที่ไม่ซ้ำกันในระดับคณะ (แก้ Error KeyError: 'คณะ' โดยใช้ df_full_info)
+            res_fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
+            fac_sum = res_fac_unique.groupby("คณะ").agg(
+                Total_Score=("คะแนน", "sum"), 
+                Total_Titles=("ชื่อเรื่อง", "count")
+            ).reset_index()
 
-        def calc_fac_kpi(row):
-            f_name = row["คณะ"]
-            n = fac_members.get(f_name, 1)
-            y = 30 if f_name in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
-            return round(min((((row["Total_Score"] / n) * 100) / y) * 5, 5.0), 2)
+            def calc_fac_kpi(row):
+                f_name = row["คณะ"]
+                n = fac_members.get(f_name, 1)
+                y = 30 if f_name in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
+                score = (((row["Total_Score"] / n) * 100) / y) * 5
+                return round(min(score, 5.0), 2)
 
-        fac_sum["Faculty KPI Score"] = fac_sum.apply(calc_fac_kpi, axis=1)
-        
-        # 1. Faculty KPI Graph
-        st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", color="คณะ", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
-        
-        # 2. Comparison Graph
-        st.markdown("#### 📊 Faculty Volume vs. Score")
-        fig_f_comp = go.Figure()
-        fig_f_comp.add_trace(go.Bar(x=fac_sum["คณะ"], y=fac_sum["Total_Titles"], name="Titles", marker_color='#60A5FA'))
-        fig_f_comp.add_trace(go.Bar(x=fac_sum["คณะ"], y=fac_sum["Total_Score"], name="Score", marker_color='#1D4ED8'))
-        st.plotly_chart(fig_f_comp.update_layout(barmode='group'), use_container_width=True)
-        
-        st.dataframe(fac_sum.sort_values("Faculty KPI Score", ascending=False), use_container_width=True, hide_index=True)
+            fac_sum["Faculty KPI Score"] = fac_sum.apply(calc_fac_kpi, axis=1)
+            
+            # 1. KPI Bar Chart
+            st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", color="คณะ", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
+            
+            # 2. Volume vs Score Chart
+            st.markdown("#### 📊 Faculty Volume vs. Score")
+            fig_f_comp = go.Figure()
+            fig_f_comp.add_trace(go.Bar(x=fac_sum["คณะ"], y=fac_sum["Total_Titles"], name="Titles", marker_color='#60A5FA'))
+            fig_f_comp.add_trace(go.Bar(x=fac_sum["คณะ"], y=fac_sum["Total_Score"], name="Score", marker_color='#1D4ED8'))
+            st.plotly_chart(fig_f_comp.update_layout(barmode='group', template="plotly_white"), use_container_width=True)
+            
+            st.dataframe(fac_sum.sort_values("Faculty KPI Score", ascending=False), use_container_width=True, hide_index=True)
+        else:
+            st.info("No research data found for this year.")
 
     with t4:
         st.dataframe(df_master, use_container_width=True, hide_index=True)
