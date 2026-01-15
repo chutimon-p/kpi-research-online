@@ -28,16 +28,13 @@ def load_all_data():
     if not client: return pd.DataFrame(), pd.DataFrame()
     try:
         sh = client.open("Research_Database")
-        # Load Masters
         df_m = pd.DataFrame(sh.worksheet("masters").get_all_records())
         df_m.columns = df_m.columns.str.strip()
         df_m["Name-surname"] = df_m["Name-surname"].astype(str).str.strip()
         
-        # Load Research
         df_r = pd.DataFrame(sh.worksheet("research").get_all_records())
         df_r.columns = df_r.columns.str.strip()
         df_r["ผู้เขียน"] = df_r["ผู้เขียน"].astype(str).str.strip()
-        
         return df_m, df_r
     except Exception as e:
         st.error(f"❌ Error loading data: {e}")
@@ -81,7 +78,6 @@ if df_master.empty:
     st.warning("⚠️ Accessing Google Sheets... Please wait.")
     st.stop()
 
-# Data Cleaning
 if not df_research.empty:
     df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
     df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
@@ -99,7 +95,6 @@ with st.sidebar:
     if st.session_state.logged_in:
         menu_options.insert(0, "✍️ Submit Research")
         menu_options.append("⚙️ Manage Database")
-    
     menu = st.radio("Go to Page:", menu_options)
     
     st.divider()
@@ -127,12 +122,11 @@ if menu == "📊 Dashboard & Reports":
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # Merge for KPI Analysis
     df_full_info = df_filtered.merge(df_master[['Name-surname', 'คณะ', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
 
-    # Member Counts for Division (n)
-    prog_member_counts = df_master[df_master['หลักสูตร'] != ""].groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
-    fac_member_counts = df_master[df_master['คณะ'] != ""].groupby("คณะ")["Name-surname"].nunique().to_dict()
+    # --- ส่วนที่แก้ไข: นับจำนวนอาจารย์โดยไม่กรองค่าว่าง/เครื่องหมายลบ ---
+    prog_member_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
+    fac_member_counts = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
 
     m1, m2, m3 = st.columns(3)
     unique_titles = df_filtered.drop_duplicates(subset=['ชื่อเรื่อง'])
@@ -142,7 +136,7 @@ if menu == "📊 Dashboard & Reports":
 
     tabs = st.tabs(["🏛 Overview", "🎓 Program KPI", "👤 Researcher Profile", "🏢 Faculty KPI", "📋 Master Database"])
 
-    with tabs[0]: # Overview
+    with tabs[0]:
         st.markdown("#### 🌍 University Growth")
         growth = df_research[df_research['ปี'] > 0].drop_duplicates(subset=['ชื่อเรื่อง']).groupby("ปี").agg(Titles=("ชื่อเรื่อง", "count"), Score=("คะแนน", "sum")).reset_index()
         fig_g = go.Figure()
@@ -151,10 +145,10 @@ if menu == "📊 Dashboard & Reports":
         fig_g.update_layout(yaxis2=dict(overlaying="y", side="right"), template="plotly_white")
         st.plotly_chart(fig_g, use_container_width=True)
 
-    with tabs[1]: # Program KPI
+    with tabs[1]:
         st.markdown("#### 🏆 Program KPI Achievement")
         prog_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
-        prog_sum = prog_unique.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum"), Total_Titles=("ชื่อเรื่อง", "count")).reset_index()
+        prog_sum = prog_unique.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum")).reset_index()
         
         all_progs = df_master[["หลักสูตร", "คณะ"]].drop_duplicates().dropna()
         prog_report = all_progs.merge(prog_sum, on="หลักสูตร", how="left").fillna(0)
@@ -170,7 +164,7 @@ if menu == "📊 Dashboard & Reports":
         st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', text="KPI Score", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
         st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
-    with tabs[2]: # Researcher Profile
+    with tabs[2]:
         st.markdown("#### 👤 Researcher Portfolio")
         sel_auth = st.selectbox("🔍 Search Name:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
         if sel_auth != "-- Select --":
@@ -180,7 +174,7 @@ if menu == "📊 Dashboard & Reports":
             c1.metric("Score", f"{works['คะแนน'].sum():.2f}")
             c2.dataframe(works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
 
-    with tabs[3]: # Faculty KPI
+    with tabs[3]:
         st.markdown("#### 🏢 Faculty KPI Performance")
         fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
         fac_sum = fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum")).reset_index()
@@ -194,7 +188,7 @@ if menu == "📊 Dashboard & Reports":
         fac_sum["Faculty KPI Score"] = fac_sum.apply(get_fac_kpi, axis=1)
         st.plotly_chart(px.bar(fac_sum, x="Faculty KPI Score", y="คณะ", orientation='h', text="Faculty KPI Score", color="คณะ", template="plotly_white"), use_container_width=True)
 
-    with tabs[4]: # Master
+    with tabs[4]:
         st.dataframe(df_master, use_container_width=True, hide_index=True)
 
 # ==========================================
