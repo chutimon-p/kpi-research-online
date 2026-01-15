@@ -161,21 +161,14 @@ if menu == "📊 Dashboard & Reports":
     m2.metric("Active Researchers", f"{df_filtered['ผู้เขียน'].nunique()} Persons")
     m3.metric("Weighted Score Sum", f"{df_unique_total['คะแนน'].sum():.2f}")
 
-    # --- Tabs Definition ---
     t0, t1, t2, t3, t4, t5 = st.tabs([
-        "🏛 Overview", 
-        "🎓 Program KPI", 
-        "👤 Researcher Profile", 
-        "🏢 Faculty KPI", 
-        "📋 Master Database",
-        "🔍 Verification" 
+        "🏛 Overview", "🎓 Program KPI", "👤 Researcher Profile", 
+        "🏢 Faculty KPI", "📋 Master Database", "🔍 Verification"
     ])
 
     with t0:
         st.markdown("#### 🌍 University Growth")
-        inst_summary = df_unique_total.groupby("ปี").agg(
-            Titles=("ชื่อเรื่อง", "count"), Total_Weight=("คะแนน", "sum")
-        ).reset_index().sort_values("ปี")
+        inst_summary = df_unique_total.groupby("ปี").agg(Titles=("ชื่อเรื่อง", "count"), Total_Weight=("คะแนน", "sum")).reset_index().sort_values("ปี")
         inst_summary = inst_summary[inst_summary['ปี'] > 0]
         fig_inst = go.Figure()
         fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Titles", marker_color='#1E3A8A'))
@@ -188,12 +181,7 @@ if menu == "📊 Dashboard & Reports":
         all_progs = df_master[["หลักสูตร", "คณะ"]].drop_duplicates().dropna()
         all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
         prog_member_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
-
-        prog_summary = df_unique_agency.groupby("หลักสูตร").agg(
-            Total_Score=("คะแนน", "sum"), 
-            Total_Titles=("ชื่อเรื่อง", "count")
-        ).reset_index()
-        
+        prog_summary = df_unique_agency.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum"), Total_Titles=("ชื่อเรื่อง", "count")).reset_index()
         prog_report = all_progs.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
 
         def calc_kpi(row):
@@ -208,14 +196,29 @@ if menu == "📊 Dashboard & Reports":
         st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t2:
-        st.markdown("#### 👤 Researcher Portfolio")
-        search_author = st.selectbox("🔍 Select Researcher:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
+        st.markdown("#### 🏆 Top 3 Researchers (Highest Weighted Scores)")
+        author_rank = df_filtered.groupby("ผู้เขียน")["คะแนน"].sum().reset_index().sort_values("คะแนน", ascending=False).head(3)
+        
+        r_cols = st.columns(3)
+        medals = ["🥇 1st Place", "🥈 2nd Place", "🥉 3rd Place"]
+        colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
+        for i, (col, medal) in enumerate(zip(r_cols, medals)):
+            if i < len(author_rank):
+                row = author_rank.iloc[i]
+                col.markdown(f"""<div style="background-color: white; padding: 20px; border-radius: 10px; border-top: 5px solid {colors[i]}; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center;">
+                    <h3 style="margin: 0; color: #1E3A8A;">{medal}</h3>
+                    <p style="font-size: 1.1rem; font-weight: bold; margin: 10px 0;">{row['ผู้เขียน']}</p>
+                    <p style="font-size: 1rem; color: #64748b;">Total Score: <span style="color: #1E3A8A; font-weight: bold;">{row['คะแนน']:.2f}</span></p>
+                </div>""", unsafe_allow_html=True)
+        st.divider()
+
+        st.markdown("#### 👤 Individual Researcher Portfolio")
+        search_author = st.selectbox("🔍 Search Researcher:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
         if search_author != "-- Select --":
             author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].copy().sort_values("ปี", ascending=False)
             if not author_works.empty:
                 c1, c2 = st.columns([1, 3])
-                c1.metric("Works", len(author_works))
-                c1.metric("Score", f"{author_works['คะแนน'].sum():.2f}")
+                c1.metric("Works", len(author_works)); c1.metric("Score", f"{author_works['คะแนน'].sum():.2f}")
                 c2.dataframe(author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
 
     with t3:
@@ -223,88 +226,47 @@ if menu == "📊 Dashboard & Reports":
         if not df_full_info.empty:
             fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
             res_fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
-            fac_sum = res_fac_unique.groupby("คณะ").agg(
-                Total_Score=("คะแนน", "sum"), 
-                Total_Titles=("ชื่อเรื่อง", "count")
-            ).reset_index()
-
+            fac_sum = res_fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum"), Total_Titles=("ชื่อเรื่อง", "count")).reset_index()
             def calc_fac_kpi(row):
-                f_name = row["คณะ"]
-                n = fac_members.get(f_name, 1)
+                f_name = row["คณะ"]; n = fac_members.get(f_name, 1)
                 y = 30 if f_name in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
-                score = (((row["Total_Score"] / n) * 100) / y) * 5
-                return round(min(score, 5.0), 2)
-
+                return round(min((((row["Total_Score"] / n) * 100) / y) * 5, 5.0), 2)
             fac_sum["Faculty KPI Score"] = fac_sum.apply(calc_fac_kpi, axis=1)
             st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", color="คณะ", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="red"), use_container_width=True)
             st.dataframe(fac_sum.sort_values("Faculty KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
-    with t4:
-        st.dataframe(df_master, use_container_width=True, hide_index=True)
+    with t4: st.dataframe(df_master, use_container_width=True, hide_index=True)
 
     with t5:
         st.markdown("#### 🔍 KPI Calculation Audit Trail")
-        st.info("เลือกโหมดการตรวจสอบเพื่อดูที่มาของคะแนนระดับหลักสูตรหรือคณะ")
-        
         audit_mode = st.radio("เลือกโหมดการตรวจสอบ:", ["รายหลักสูตร (Program)", "รายคณะ (Faculty)"], horizontal=True)
-        
         if audit_mode == "รายหลักสูตร (Program)":
-            check_prog_list = sorted(df_master["หลักสูตร"].unique().tolist())
-            target_prog = st.selectbox("เลือกหลักสูตรที่ต้องการตรวจสอบ:", check_prog_list)
-            
+            target_prog = st.selectbox("เลือกหลักสูตร:", sorted(df_master["หลักสูตร"].unique().tolist()))
             if target_prog:
                 prog_audit_data = df_unique_agency[df_unique_agency["หลักสูตร"] == target_prog].copy()
                 members_in_prog = df_master[df_master["หลักสูตร"] == target_prog]["Name-surname"].unique().tolist()
-                n_count = len(members_in_prog)
-                
+                n_count = len(members_in_prog); sum_score = prog_audit_data["คะแนน"].sum()
                 group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
                 target_x = 60 if target_prog == "Ph.D-Admin" else (40 if target_prog in group_40 else 20)
-                
-                sum_score = prog_audit_data["คะแนน"].sum()
                 final_calc = (((sum_score / n_count) * 100) / target_x) * 5
-                
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("ผลรวมคะแนน (A)", f"{sum_score:.2f}")
-                c2.metric("จำนวนอาจารย์ (n)", n_count)
-                c3.metric("เกณฑ์เป้าหมาย (x)", f"{target_x}%")
-                c4.metric("คะแนน KPI สุทธิ", f"{min(final_calc, 5.0):.2f} / 5.0")
-                
+                c1.metric("คะแนนรวม (A)", f"{sum_score:.2f}"); c2.metric("จำนวนอาจารย์ (n)", n_count); c3.metric("เกณฑ์ (x)", f"{target_x}%"); c4.metric("KPI สุทธิ", f"{min(final_calc, 5.0):.2f}")
                 col_list, col_member = st.columns([2, 1])
-                with col_list:
-                    st.subheader(f"📋 งานวิจัยของหลักสูตร: {target_prog}")
-                    st.dataframe(prog_audit_data[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
-                with col_member:
-                    st.subheader("👥 รายชื่ออาจารย์ (ตัวหาร n)")
-                    st.write(members_in_prog)
-
-        else: # โหมดรายคณะ (Faculty)
-            check_fac_list = sorted(df_master["คณะ"].unique().tolist())
-            target_fac = st.selectbox("เลือกคณะที่ต้องการตรวจสอบ:", check_fac_list)
-            
+                with col_list: st.dataframe(prog_audit_data[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
+                with col_member: st.write(members_in_prog)
+        else:
+            target_fac = st.selectbox("เลือกคณะ:", sorted(df_master["คณะ"].unique().tolist()))
             if target_fac:
-                # Deduplicated by Title + Faculty
                 fac_audit_data = df_full_info[df_full_info["คณะ"] == target_fac].drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ']).copy()
                 members_in_fac = df_master[df_master["คณะ"] == target_fac]["Name-surname"].unique().tolist()
-                n_count = len(members_in_fac)
-                
+                n_count = len(members_in_fac); sum_score = fac_audit_data["คะแนน"].sum()
                 target_y = 30 if target_fac in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
-                
-                sum_score = fac_audit_data["คะแนน"].sum()
                 final_calc = (((sum_score / n_count) * 100) / target_y) * 5
-                
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric("ผลรวมคะแนน (A)", f"{sum_score:.2f}")
-                c2.metric("จำนวนบุคลากร (n)", n_count)
-                c3.metric("เกณฑ์เป้าหมาย (y)", f"{target_y}%")
-                c4.metric("คะแนน KPI สุทธิ", f"{min(final_calc, 5.0):.2f} / 5.0")
-                
+                c1.metric("คะแนนรวม (A)", f"{sum_score:.2f}"); c2.metric("จำนวนบุคลากร (n)", n_count); c3.metric("เกณฑ์ (y)", f"{target_y}%"); c4.metric("KPI สุทธิ", f"{min(final_calc, 5.0):.2f}")
                 col_list, col_member = st.columns([2, 1])
-                with col_list:
-                    st.subheader(f"📋 งานวิจัยของคณะ: {target_fac}")
-                    st.dataframe(fac_audit_data[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
-                with col_member:
-                    st.subheader("👥 รายชื่อคณาจารย์ในคณะ")
-                    st.write(members_in_fac)
+                with col_list: st.dataframe(fac_audit_data[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
+                with col_member: st.write(members_in_fac)
 
 # ==========================================
 # 5. Admin Sections
@@ -319,13 +281,10 @@ elif menu == "✍️ Submit Research":
         a_in = st.multiselect("Authors", df_master["Name-surname"].unique().tolist())
         if st.form_submit_button("Save Record"):
             if t_in and a_in:
-                existing_titles = [t.lower() for t in df_research["ชื่อเรื่อง"].unique()]
-                if t_in.lower() in existing_titles:
-                    st.warning(f"⚠️ Title '{t_in}' already exists.")
+                if t_in.lower() in [t.lower() for t in df_research["ชื่อเรื่อง"].unique()]: st.warning(f"⚠️ Title already exists.")
                 else:
-                    for a in a_in: 
-                        save_to_sheet("research", {"ชื่อเรื่อง": t_in, "ปี": y_in, "ฐานวารสาร": j_in, "คะแนน": SCORE_MAP[j_in], "ผู้เขียน": a})
-                    st.success("✅ Recorded Successfully!"); st.cache_data.clear(); st.rerun()
+                    for a in a_in: save_to_sheet("research", {"ชื่อเรื่อง": t_in, "ปี": y_in, "ฐานวารสาร": j_in, "คะแนน": SCORE_MAP[j_in], "ผู้เขียน": a})
+                    st.success("✅ Recorded!"); st.cache_data.clear(); st.rerun()
 
 elif menu == "⚙️ Manage Database":
     st.markdown("### ⚙️ Database Management")
@@ -335,8 +294,7 @@ elif menu == "⚙️ Manage Database":
         opts = ["-- Select --"] + [f"{r['ปี']} | {r['ชื่อเรื่อง']} | {r['ฐานวารสาร']}" for _, r in df_manage.iterrows()]
         sel = st.selectbox("Delete Entry:", opts)
         if sel != "-- Select --":
-            parts = sel.split(" | ")
-            target = parts[1].strip()
+            target = sel.split(" | ")[1].strip()
             if st.button("Confirm Delete"):
                 with st.spinner("Deleting..."):
                     ws = conn_sheets().open("Research_Database").worksheet("research")
