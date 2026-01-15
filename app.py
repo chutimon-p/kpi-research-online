@@ -45,35 +45,53 @@ def save_to_sheet(sheet_name, new_row_dict):
         worksheet.append_row(list(new_row_dict.values()))
 
 # ==========================================
-# 2. Page Configuration & Improved UI
+# 2. Page Configuration & UI (White Theme + Large Tabs)
 # ==========================================
 st.set_page_config(page_title="Research Management - STIU", layout="wide")
 
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 1.8rem; color: #60A5FA; }
+    /* พื้นหลังสีขาวสะอาดตา */
+    .stApp { background-color: #FFFFFF; }
+
+    /* ปรับแต่ง Metric */
+    [data-testid="stMetricValue"] { font-size: 2.2rem; color: #1E3A8A; font-weight: 800; }
     .stMetric {
-        background-color: rgba(100, 116, 139, 0.1); 
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border-left: 5px solid #3B82F6;
+        background-color: #F8FAFC; 
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
     }
-    .ranking-card {
-        background-color: rgba(255, 255, 255, 0.05); 
-        padding: 20px; border-radius: 12px; 
-        box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
-        text-align: center; margin-bottom: 15px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+    
+    /* ปรับแต่ง Tab ให้ใหญ่ เด่น และชัดเจน */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: #F1F5F9;
+        padding: 8px;
+        border-radius: 12px;
     }
-    h1, h2, h3, h4 { color: #60A5FA !important; }
+    
     .stTabs [data-baseweb="tab"] {
-        height: 45px; background-color: rgba(100, 116, 139, 0.05);
-        border-radius: 8px 8px 0 0; padding: 10px 15px; color: #94A3B8;
+        height: 60px; 
+        min-width: 160px;
+        background-color: #FFFFFF;
+        border-radius: 8px;
+        color: #64748B;
+        font-size: 1.3rem !important; 
+        font-weight: 700 !important;
+        border: 1px solid #E2E8F0;
+        transition: all 0.3s ease;
     }
+
+    /* เมื่อเลือก Tab (Active) */
     .stTabs [aria-selected="true"] {
-        background-color: #3B82F6 !important; color: white !important; font-weight: bold;
+        background-color: #1E3A8A !important; 
+        color: white !important;
+        font-size: 1.4rem !important;
+        box-shadow: 0 4px 12px rgba(30, 58, 138, 0.2);
     }
+    
+    h1, h2, h3, h4 { color: #1E3A8A !important; font-weight: 800; }
     html, body, [class*="css"] { font-family: 'Sarabun', sans-serif; }
     </style>
     """, unsafe_allow_html=True)
@@ -81,14 +99,14 @@ st.markdown("""
 # Header Setup
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
-    try: st.image("logo.jpg", width=140)
+    try: st.image("logo.jpg", width=130)
     except: st.info("🏫 STIU LOGO")
 
 with header_col2:
     st.markdown("""
         <div style="padding-top: 10px;">
             <h1 style="margin-bottom: 0px;">St Teresa International University</h1>
-            <p style="color: #94A3B8; font-size: 1.1rem; margin-top: 0px;">Research Management & KPI Tracking System</p>
+            <p style="color: #64748B; font-size: 1.1rem; margin-top: 0px;">Research Management & KPI Tracking System</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -127,7 +145,7 @@ with st.sidebar:
     else:
         if st.button("Logout"): st.session_state.logged_in = False; st.rerun()
     all_years = sorted(df_research[df_research["ปี"] > 0]["ปี"].unique().tolist())
-    year_option = st.selectbox("📅 Year Filter:", ["All Years"] + [str(y) for y in all_years])
+    year_option = st.selectbox("📅 Filter Year:", ["All Years"] + [str(y) for y in all_years])
 
 # ==========================================
 # 4. Dashboard & Reports
@@ -141,8 +159,8 @@ if menu == "📊 Dashboard & Reports":
     df_unique_agency = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
 
     t0, t1, t2, t3, t4, t5, t6 = st.tabs([
-        "🏛 Overview", "🎓 Program KPI", "👤 Researcher Profile", 
-        "🏢 Faculty KPI", "📋 Master Database", "🔍 Verification", "🚀 KPI Improvement Plan"
+        "🏛 OVERVIEW", "🎓 PROGRAM KPI", "👤 RESEARCHER", 
+        "🏢 FACULTY KPI", "📋 MASTER DB", "🔍 AUDIT", "🚀 IMPROVEMENT"
     ])
 
     with t0:
@@ -150,9 +168,9 @@ if menu == "📊 Dashboard & Reports":
         inst_summary = df_unique_total.groupby("ปี").agg(Titles=("ชื่อเรื่อง", "count"), Total_Weight=("คะแนน", "sum")).reset_index()
         inst_summary = inst_summary[inst_summary['ปี'] > 0].sort_values("ปี")
         fig_inst = go.Figure()
-        fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Titles", marker_color='#3B82F6'))
+        fig_inst.add_trace(go.Bar(x=inst_summary["ปี"], y=inst_summary["Titles"], name="Titles", marker_color='#1E3A8A'))
         fig_inst.add_trace(go.Scatter(x=inst_summary["ปี"], y=inst_summary["Total_Weight"], name="Weight", yaxis="y2", line=dict(color='#F43F5E', width=3)))
-        fig_inst.update_layout(yaxis2=dict(overlaying="y", side="right"), template="plotly_dark")
+        fig_inst.update_layout(yaxis2=dict(overlaying="y", side="right"), template="plotly_white")
         st.plotly_chart(fig_inst, use_container_width=True)
 
     with t1:
@@ -162,26 +180,30 @@ if menu == "📊 Dashboard & Reports":
         prog_member_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
         prog_summary = df_unique_agency.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum")).reset_index()
         prog_report = all_progs.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
+        
         def calc_kpi(row):
             n = prog_member_counts.get(row["หลักสูตร"], 1)
             group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
             x = 60 if row["หลักสูตร"] == "Ph.D-Admin" else (40 if row["หลักสูตร"] in group_40 else 20)
             return round(min((((row["Total_Score"] / n) * 100) / x) * 5, 5.0), 2)
+        
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
-        st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", template="plotly_dark").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
+        st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
+        
+        st.markdown("#### 📄 Program KPI Data Table")
+        st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t2:
         st.markdown("#### 🏆 Top 3 Researchers")
         author_rank = df_filtered.groupby("ผู้เขียน")["คะแนน"].sum().reset_index().sort_values("คะแนน", ascending=False).head(3)
         r_cols = st.columns(3)
         medals = ["🥇 1st Place", "🥈 2nd Place", "🥉 3rd Place"]
-        m_colors = ["#FFD700", "#C0C0C0", "#CD7F32"]
         for i, (col, medal) in enumerate(zip(r_cols, medals)):
             if i < len(author_rank):
                 row = author_rank.iloc[i]
-                col.markdown(f'<div class="ranking-card" style="border-top: 5px solid {m_colors[i]};"><h3>{medal}</h3><b>{row["ผู้เขียน"]}</b><br>Score: {row["คะแนน"]:.2f}</div>', unsafe_allow_html=True)
+                col.metric(medal, row["ผู้เขียน"], f"Score: {row['คะแนน']:.2f}")
         st.divider()
-        search_author = st.selectbox("🔍 Search Researcher:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
+        search_author = st.selectbox("🔍 Search Portfolio:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
         if search_author != "-- Select --":
             author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].sort_values("ปี", ascending=False)
             st.dataframe(author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
@@ -191,54 +213,50 @@ if menu == "📊 Dashboard & Reports":
         fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
         res_fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
         fac_sum = res_fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum")).reset_index()
+        
         def calc_fac_kpi(row):
             y = 30 if row["คณะ"] in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
             n = fac_members.get(row["คณะ"], 1)
             return round(min((((row["Total_Score"] / n) * 100) / y) * 5, 5.0), 2)
+        
         fac_sum["Faculty KPI Score"] = fac_sum.apply(calc_fac_kpi, axis=1)
-        st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", template="plotly_dark").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
+        st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", template="plotly_white").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
+        
+        st.markdown("#### 📄 Faculty KPI Data Table")
+        st.dataframe(fac_sum.sort_values("Faculty KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t4: st.dataframe(df_master, use_container_width=True, hide_index=True)
 
     with t5:
         st.markdown("#### 🔍 Verification (Audit Trail)")
         audit_mode = st.radio("Mode:", ["Program", "Faculty"], horizontal=True)
-        if audit_mode == "Program":
-            target = st.selectbox("Select Program:", sorted(df_master["หลักสูตร"].unique().tolist()))
-            if target:
-                prog_audit = df_unique_agency[df_unique_agency["หลักสูตร"] == target].copy()
-                st.dataframe(prog_audit[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True)
-        else:
-            target = st.selectbox("Select Faculty:", sorted(df_master["คณะ"].unique().tolist()))
-            if target:
-                fac_audit = df_full_info[df_full_info["คณะ"] == target].drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
-                st.dataframe(fac_audit[['ปี', 'ชื่อเรื่อง', 'ผู้เขียน', 'ฐานวารสาร', 'คะแนน']], use_container_width=True)
+        target = st.selectbox("Select Target:", sorted(df_master["หลักสูตร" if audit_mode == "Program" else "คณะ"].unique().tolist()))
+        if target:
+            audit_df = df_unique_agency if audit_mode == "Program" else df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
+            st.dataframe(audit_df[audit_df["หลักสูตร" if audit_mode == "Program" else "คณะ"] == target], use_container_width=True)
 
     with t6:
-        st.markdown("#### 🚀 KPI Improvement Plan (Road to 5.0)")
-        plan_mode = st.radio("วางแผนระดับ:", ["รายหลักสูตร", "รายคณะ"], horizontal=True)
+        st.markdown("#### 🚀 KPI Improvement Plan")
+        plan_mode = st.radio("Level:", ["By Program", "By Faculty"], horizontal=True)
         
         def show_plan(name, current_sum, n, x_y):
             required_sum = (x_y * n) / 100
             gap = max(required_sum - current_sum, 0.0)
             current_kpi = min((((current_sum / n) * 100) / x_y) * 5, 5.0)
-            
-            st.subheader(f"📊 สรุปเป้าหมาย: {name}")
             c1, c2, c3 = st.columns(3)
-            c1.metric("KPI ปัจจุบัน", f"{current_kpi:.2f}")
-            c2.metric("คะแนนที่ต้องทำเพิ่ม", f"{gap:.2f}")
-            c3.metric("ตัวหาร (n)", n)
-            
+            c1.metric("Current KPI", f"{current_kpi:.2f}")
+            c2.metric("Weight Gap", f"{gap:.2f}")
+            c3.metric("Staff Count (n)", n)
             if gap > 0:
-                st.info(f"💡 เพื่อให้ได้ KPI 5.0 คุณต้องผลิตงานวิจัยเพิ่มที่มีคะแนนรวมอย่างน้อย **{gap:.2f}**")
+                st.info(f"💡 Need {gap:.2f} more points to reach KPI 5.0")
                 sc, t1, t2 = st.columns(3)
-                sc.success(f"**Scopus / Q1-4**\n\n{math.ceil(gap/1.0)} เรื่อง")
-                t1.success(f"**TCI Group 1**\n\n{math.ceil(gap/0.8)} เรื่อง")
-                t2.success(f"**TCI Group 2**\n\n{math.ceil(gap/0.6)} เรื่อง")
-            else: st.balloons(); st.success("🎉 บรรลุเป้าหมาย KPI 5.0 แล้ว!")
+                sc.warning(f"**Scopus**\n\n{math.ceil(gap/1.0)} papers")
+                t1.warning(f"**TCI 1**\n\n{math.ceil(gap/0.8)} papers")
+                t2.warning(f"**TCI 2**\n\n{math.ceil(gap/0.6)} papers")
+            else: st.balloons(); st.success("✅ KPI 5.0 Reached!")
 
-        if plan_mode == "รายหลักสูตร":
-            sel = st.selectbox("เลือกหลักสูตร:", sorted(df_master["หลักสูตร"].unique().tolist()), key="p1")
+        if plan_mode == "By Program":
+            sel = st.selectbox("Select Program:", sorted(df_master["หลักสูตร"].unique().tolist()))
             if sel:
                 curr = df_unique_agency[df_unique_agency["หลักสูตร"] == sel]["คะแนน"].sum()
                 n = df_master[df_master["หลักสูตร"] == sel]["Name-surname"].nunique()
@@ -246,7 +264,7 @@ if menu == "📊 Dashboard & Reports":
                 x = 60 if sel == "Ph.D-Admin" else (40 if sel in g40 else 20)
                 show_plan(sel, curr, n, x)
         else:
-            sel = st.selectbox("เลือกคณะ:", sorted(df_master["คณะ"].unique().tolist()), key="p2")
+            sel = st.selectbox("Select Faculty:", sorted(df_master["คณะ"].unique().tolist()))
             if sel:
                 curr = df_full_info[df_full_info["คณะ"] == sel].drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])["คะแนน"].sum()
                 n = df_master[df_master["คณะ"] == sel]["Name-surname"].nunique()
@@ -264,7 +282,7 @@ elif menu == "✍️ Submit Research":
         with c1: y_in = st.number_input("Year (B.E.)", 2560, 2600, 2568)
         with c2: j_in = st.selectbox("Journal Database", list(SCORE_MAP.keys()))
         a_in = st.multiselect("Authors", df_master["Name-surname"].unique().tolist())
-        if st.form_submit_button("Save Record"):
+        if st.form_submit_button("Save"):
             if t_in and a_in:
                 for a in a_in: save_to_sheet("research", {"ชื่อเรื่อง": t_in, "ปี": y_in, "ฐานวารสาร": j_in, "คะแนน": SCORE_MAP[j_in], "ผู้เขียน": a})
                 st.success("✅ Recorded!"); st.cache_data.clear(); st.rerun()
