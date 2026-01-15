@@ -3,7 +3,6 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import plotly.express as px
-import plotly.graph_objects as go
 
 # ==========================================
 # 1. Database Connection
@@ -36,40 +35,57 @@ def load_sheet_data(sheet_name):
     return pd.DataFrame()
 
 # ==========================================
-# 2. FIXED VALUES (ค่า n และ x ตามไฟล์ Excel)
+# 2. FIXED VALUES & MAPPING (จัดกลุ่มคณะ-หลักสูตร)
 # ==========================================
-# จำนวนอาจารย์รายหลักสูตร (n)
-FIXED_PROG_MEMBERS = {
-    "BE": 5, "CA": 5, "B.Ed-Math": 5, "B.Ed-Sci": 5, "B.Ed-Eng": 5, "B.Ed-EC": 5,
-    "G-Dip TH": 5, "G-Dip Inter": 5, "M.Ed-Admin": 3, "M.Ed-LMS": 3, "Ph.D-Admin": 3,
-    "BBA": 9, "ACC": 5, "AB": 5, "ATC": 5, "AR": 5, "MBA": 3,
-    "PH": 5, "OHS": 5, "MPH": 3, "NS": 5
-}
+# กำหนดโครงสร้าง คณะ -> หลักสูตร และจำนวนอาจารย์ (n)
+PROGRAM_STRUCTURE = [
+    {"คณะ": "มนุษย์ศาสตร์และสังคมศาสตร์", "หลักสูตร": "BE", "n": 5},
+    {"คณะ": "มนุษย์ศาสตร์และสังคมศาสตร์", "หลักสูตร": "CA", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "B.Ed-Math", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "B.Ed-Sci", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "B.Ed-Eng", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "B.Ed-EC", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "G-Dip TH", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "G-Dip Inter", "n": 5},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "M.Ed-Admin", "n": 3},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "M.Ed-LMS", "n": 3},
+    {"คณะ": "คณะศึกษาศาสตร์", "หลักสูตร": "Ph.D-Admin", "n": 3},
+    {"คณะ": "คณะบริหารธุรกิจบัณฑิต", "หลักสูตร": "BBA", "n": 9},
+    {"คณะ": "คณะบริหารธุรกิจบัณฑิต", "หลักสูตร": "ACC", "n": 5},
+    {"คณะ": "คณะบริหารธุรกิจบัณฑิต", "หลักสูตร": "AB", "n": 5},
+    {"คณะ": "คณะบริหารธุรกิจบัณฑิต", "หลักสูตร": "ATC", "n": 5},
+    {"คณะ": "คณะบริหารธุรกิจบัณฑิต", "หลักสูตร": "AR", "n": 5},
+    {"คณะ": "คณะบริหารธุรกิจบัณฑิต", "หลักสูตร": "MBA", "n": 3},
+    {"คณะ": "คณะสาธารณสุขศาสตร์", "หลักสูตร": "PH", "n": 5},
+    {"คณะ": "คณะสาธารณสุขศาสตร์", "หลักสูตร": "OHS", "n": 5},
+    {"คณะ": "คณะสาธารณสุขศาสตร์", "หลักสูตร": "MPH", "n": 3},
+    {"คณะ": "คณะพยาบาลศาสตร์", "หลักสูตร": "NS", "n": 5}
+]
 
-# จำนวนอาจารย์รายคณะ (n_fac)
+# สร้าง DataFrame พื้นฐานเพื่อใช้เรียงลำดับ
+df_base_structure = pd.DataFrame(PROGRAM_STRUCTURE)
+FIXED_PROG_MEMBERS = df_base_structure.set_index('หลักสูตร')['n'].to_dict()
+
 FIXED_FAC_MEMBERS = {
-    "มนุษย์ศาสตร์และสังคมศาสตร์": 15,
-    "คณะศึกษาศาสตร์": 42,
-    "คณะบริหารธุรกิจบัณฑิต": 40,
-    "คณะสาธารณสุขศาสตร์": 18,
-    "คณะพยาบาลศาสตร์": 15
+    "มนุษย์ศาสตร์และสังคมศาสตร์": 15, "คณะศึกษาศาสตร์": 42,
+    "คณะบริหารธุรกิจบัณฑิต": 40, "คณะสาธารณสุขศาสตร์": 18, "คณะพยาบาลศาสตร์": 15
 }
 
 SCORE_MAP = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
 
 # ==========================================
-# 3. Page Setup & Data Loading
+# 3. Setup & Data Preparation
 # ==========================================
-st.set_page_config(page_title="Research Management - STIU", layout="wide")
+st.set_page_config(page_title="STIU Research Management", layout="wide")
 
 df_master = load_sheet_data("masters")
 df_research = load_sheet_data("research")
 
 if df_master.empty or df_research.empty:
-    st.warning("⚠️ Accessing Google Sheets... Please wait.")
+    st.warning("⚠️ กำลังโหลดข้อมูล...")
     st.stop()
 
-# ทำความสะอาดข้อมูลเบื้องต้น
+# Clean ข้อมูล
 df_research['ผู้เขียน'] = df_research['ผู้เขียน'].astype(str).str.strip()
 df_master['Name-surname'] = df_master['Name-surname'].astype(str).str.strip()
 df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
@@ -81,13 +97,12 @@ df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fi
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
 with st.sidebar:
-    st.markdown("### 🧭 Navigation")
+    st.title("📌 STIU Menu")
     menu_options = ["📊 Dashboard & Reports"]
     if st.session_state.logged_in:
         menu_options.insert(0, "✍️ Submit Research")
         menu_options.append("⚙️ Manage Database")
-    
-    menu = st.radio("Go to Page:", menu_options)
+    menu = st.radio("เลือกหน้า:", menu_options)
     
     st.divider()
     if not st.session_state.logged_in:
@@ -102,48 +117,58 @@ with st.sidebar:
             st.rerun()
 
     all_years = sorted(df_research[df_research["ปี"] > 0]["ปี"].unique().tolist())
-    year_option = st.selectbox("📅 Year Filter:", ["All Years"] + [str(y) for y in all_years])
+    year_option = st.selectbox("📅 เลือกปี พ.ศ.:", ["All Years"] + [str(y) for y in all_years])
 
 # ==========================================
-# 5. Page: Dashboard
+# 5. Dashboard (จุดที่มีการจัดกลุ่มคณะ)
 # ==========================================
 if menu == "📊 Dashboard & Reports":
     df_filtered = df_research.copy()
     if year_option != "All Years":
         df_filtered = df_filtered[df_filtered["ปี"] == int(year_option)]
     
-    # เชื่อมข้อมูลหา คณะ/หลักสูตร
+    # เชื่อมข้อมูล
     df_full = df_filtered.merge(df_master[['Name-surname', 'คณะ', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
 
-    st.markdown(f"## 📈 Performance Overview: {year_option}")
-    
-    t1, t2, t3, t4 = st.tabs(["🎓 Program KPI", "🏢 Faculty KPI", "👤 Researcher Profile", "🔍 Check Mismatch"])
+    t1, t2, t3 = st.tabs(["🎓 Program KPI", "🏢 Faculty KPI", "🔍 Check Mismatch"])
 
     with t1:
-        st.markdown("#### 🏆 Program KPI Achievement (Manual Calc Logic)")
-        # 1 เรื่อง นับ 1 ครั้งต่อหลักสูตร
+        st.markdown("#### 🏆 Program KPI Score (จัดกลุ่มตามคณะ)")
+        
+        # คำนวณคะแนน
         prog_unique = df_full.drop_duplicates(subset=['ชื่อเรื่อง', 'หลักสูตร'])
         prog_sum = prog_unique.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum")).reset_index()
         
-        report_p = pd.DataFrame(list(FIXED_PROG_MEMBERS.keys()), columns=["หลักสูตร"])
-        report_p = report_p.merge(prog_sum, on="หลักสูตร", how="left").fillna(0)
+        # รวมข้อมูลเข้ากับโครงสร้างหลัก 21 หลักสูตรที่เรียงลำดับไว้แล้ว
+        report_p = df_base_structure.merge(prog_sum, on="หลักสูตร", how="left").fillna(0)
 
         def calc_kpi_p(row):
-            n = FIXED_PROG_MEMBERS.get(row["หลักสูตร"], 1)
+            n = row["n"]
             group_40 = ["G-Dip TH", "G-Dip Inter", "M.Ed-Admin", "M.Ed-LMS", "MBA", "MPH"]
             x = 60 if row["หลักสูตร"] == "Ph.D-Admin" else (40 if row["หลักสูตร"] in group_40 else 20)
             score = (((row["Total_Score"] / n) * 100) / x) * 5
             return round(score, 2)
 
         report_p["KPI Score"] = report_p.apply(calc_kpi_p, axis=1)
-        st.plotly_chart(px.bar(report_p.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", orientation='h', text="KPI Score", height=600, color_discrete_sequence=['#1E3A8A']))
-        st.dataframe(report_p.sort_values("KPI Score", ascending=False), use_container_width=True)
+        
+        # แสดงผลกราฟ - เรียงตามคณะ (ใช้สีแยกตามคณะ)
+        fig = px.bar(report_p, 
+                     x="KPI Score", 
+                     y="หลักสูตร", 
+                     color="คณะ", 
+                     orientation='h', 
+                     text="KPI Score",
+                     height=700,
+                     title="KPI Score แยกตามหลักสูตรและคณะ",
+                     category_orders={"หลักสูตร": df_base_structure["หลักสูตร"].tolist()}) # บังคับเรียงตาม List
+        
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(report_p, use_container_width=True, hide_index=True)
 
     with t2:
-        st.markdown("#### 🏢 Faculty KPI Performance")
+        st.markdown("#### 🏢 Faculty KPI Score")
         fac_unique = df_full.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
         fac_sum = fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum")).reset_index()
-        
         report_f = pd.DataFrame(list(FIXED_FAC_MEMBERS.keys()), columns=["คณะ"])
         report_f = report_f.merge(fac_sum, on="คณะ", how="left").fillna(0)
 
@@ -154,57 +179,37 @@ if menu == "📊 Dashboard & Reports":
             return round(score, 2)
 
         report_f["Faculty Score"] = report_f.apply(calc_kpi_f, axis=1)
-        st.plotly_chart(px.bar(report_f.sort_values("Faculty Score"), x="Faculty Score", y="คณะ", orientation='h', text="Faculty Score", color_discrete_sequence=['#3B82F6']))
+        st.plotly_chart(px.bar(report_f, x="Faculty Score", y="คณะ", orientation='h', text="Faculty Score", color="คณะ"))
 
     with t3:
-        search_author = st.selectbox("🔍 Researcher Search:", ["-- Select --"] + sorted(df_master["Name-surname"].unique().tolist()))
-        if search_author != "-- Select --":
-            works = df_filtered[df_filtered["ผู้เขียน"] == search_author]
-            st.metric("Total Score", f"{works['คะแนน'].sum():.2f}")
-            st.dataframe(works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], hide_index=True)
-
-    with t4:
         mismatch = df_full[df_full['หลักสูตร'].isna()]
         if not mismatch.empty:
-            st.error(f"⚠️ Found {len(mismatch)} records with mismatched names.")
-            st.dataframe(mismatch[['ผู้เขียน', 'ชื่อเรื่อง']].drop_duplicates(), use_container_width=True)
-        else:
-            st.success("✅ All data is correctly mapped to Master records.")
+            st.error(f"⚠️ พบ {len(mismatch)} งานวิจัยที่สะกดชื่ออาจารย์ไม่ตรงกับระบบ")
+            st.dataframe(mismatch[['ผู้เขียน', 'ชื่อเรื่อง']].drop_duplicates())
 
 # ==========================================
-# 6. Page: Submit Research
+# 6. Submit & Manage (ฟังก์ชันอื่นๆ คงเดิม)
 # ==========================================
 elif menu == "✍️ Submit Research":
-    st.header("✍️ Register New Publication")
-    with st.form("research_form", clear_on_submit=True):
-        title = st.text_input("ชื่อเรื่อง (Title)")
+    st.header("✍️ บันทึกงานวิจัยใหม่")
+    with st.form("research_form"):
+        title = st.text_input("ชื่อเรื่อง")
         year = st.number_input("ปี (พ.ศ.)", 2560, 2570, 2567)
         source = st.selectbox("ฐานวารสาร", list(SCORE_MAP.keys()))
-        author = st.selectbox("ชื่อผู้เขียน (Master List)", sorted(df_master["Name-surname"].unique().tolist()))
-        
-        if st.form_submit_button("Save Record"):
-            if title and author:
-                client = conn_sheets()
-                ws = client.open("Research_Database").worksheet("research")
-                ws.append_row([title, year, source, SCORE_MAP[source], author])
-                st.success("บันทึกสำเร็จ!")
-                st.rerun()
+        author = st.selectbox("ชื่อผู้เขียน", sorted(df_master["Name-surname"].unique().tolist()))
+        if st.form_submit_button("บันทึกข้อมูล"):
+            client = conn_sheets()
+            ws = client.open("Research_Database").worksheet("research")
+            ws.append_row([title, year, source, SCORE_MAP[source], author])
+            st.success("บันทึกสำเร็จ!"); st.rerun()
 
-# ==========================================
-# 7. Page: Manage Database
-# ==========================================
 elif menu == "⚙️ Manage Database":
-    st.header("⚙️ Database Management")
-    st.write("รายการทั้งหมด (เลือกเพื่อลบ)")
-    
-    # ดึงข้อมูลใหม่เพื่อความสดใหม่
+    st.header("⚙️ จัดการฐานข้อมูล")
     df_manage = load_sheet_data("research")
     st.dataframe(df_manage, use_container_width=True)
-    
-    row_idx = st.number_input("ใส่หมายเลขแถวที่ต้องการลบ (นับจากแถว 2)", min_value=2, step=1)
-    if st.button("🗑 ลบแถวที่เลือก"):
+    row_idx = st.number_input("ลำดับแถวที่ต้องการลบ (เริ่มจาก 2)", min_value=2, step=1)
+    if st.button("🗑 ลบแถว"):
         client = conn_sheets()
         ws = client.open("Research_Database").worksheet("research")
         ws.delete_rows(int(row_idx))
-        st.success(f"ลบแถวที่ {row_idx} สำเร็จ!")
-        st.rerun()
+        st.success("ลบสำเร็จ!"); st.rerun()
