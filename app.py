@@ -7,7 +7,7 @@ import time
 import os
 
 # ==========================================
-# 1. Database Connection
+# 1. Database Connection (Secure & Clean)
 # ==========================================
 @st.cache_resource
 def conn_sheets():
@@ -31,7 +31,6 @@ def load_full_data():
         # Load and Clean Masters
         df_m = pd.DataFrame(sh.worksheet("masters").get_all_records())
         df_m.columns = [str(c).strip() for c in df_m.columns]
-        # บังคับให้คอลัมน์เชื่อมต่อเป็น String และลบช่องว่าง
         if "Name-surname" in df_m.columns:
             df_m["Name-surname"] = df_m["Name-surname"].astype(str).str.strip()
             
@@ -51,7 +50,6 @@ def load_full_data():
 # ==========================================
 st.set_page_config(page_title="STIU Research KPI System", layout="wide")
 
-# Custom CSS for UI
 st.markdown("""
     <style>
     .stMetric { background-color: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 5px solid #1E3A8A; }
@@ -59,14 +57,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Header Section
-col_l, col_r = st.columns([1, 6])
-with col_l:
+h_col_l, h_col_r = st.columns([1, 6])
+with h_col_l:
     if os.path.exists("logo.jpg"):
         st.image("logo.jpg", width=100)
     else:
         st.markdown("### 🏫 STIU")
-with col_r:
+with h_col_r:
     st.markdown("<h1 style='margin:0;'>St Teresa International University</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:grey;'>Research KPI Management System (IQA Standard)</p>", unsafe_allow_html=True)
 
@@ -80,13 +77,12 @@ if df_master.empty:
     st.warning("⚠️ Ready to connect. Please check your Google Sheets configuration.")
     st.stop()
 
-# Basic Research Data Prep
 if not df_research.empty:
     df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
     df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
 
 # ==========================================
-# 3. Sidebar (English Menus)
+# 3. Sidebar Navigation
 # ==========================================
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
@@ -105,23 +101,23 @@ with st.sidebar:
             if pwd == ADMIN_PASSWORD:
                 st.session_state.logged_in = True
                 st.rerun()
+            else:
+                st.error("Invalid Password")
     else:
         if st.button("Logout"):
             st.session_state.logged_in = False
             st.rerun()
 
 # ==========================================
-# 4. Performance Dashboard (Original Logic)
+# 4. Content Pages
 # ==========================================
 if menu == "📊 Performance Dashboard":
     st.subheader(f"Performance Analysis: {sel_year}")
     
-    # Filter by Year
     df_r_active = df_research.copy()
     if sel_year != "All Years":
         df_r_active = df_r_active[df_r_active['ปี'] == int(sel_year)]
     
-    # Safe Merging to prevent ValueError
     if not df_r_active.empty:
         df_merged = df_r_active.merge(df_master, left_on="ผู้เขียน", right_on="Name-surname", how="left")
     else:
@@ -135,10 +131,8 @@ if menu == "📊 Performance Dashboard":
 
     with t2:
         st.markdown("#### 📚 Program-Level KPI (Score / Lecturers * 5)")
-        # Calculation: (Total Score in Program / Total Lecturers in Program) * 5
         prog_score = df_merged.groupby("หลักสูตร")["คะแนน"].sum().reset_index()
         prog_count = df_master.groupby("หลักสูตร").size().reset_index(name="Total_Lecturers")
-        
         kpi_p = prog_count.merge(prog_score, on="หลักสูตร", how="left").fillna(0)
         kpi_p["KPI_Score"] = (kpi_p["คะแนน"] / kpi_p["Total_Lecturers"]) * 5
         st.dataframe(kpi_p.style.format({"KPI_Score": "{:.2f}", "คะแนน": "{:.2f}"}), use_container_width=True)
@@ -147,17 +141,45 @@ if menu == "📊 Performance Dashboard":
         st.markdown("#### 🏢 Faculty-Level KPI")
         fac_score = df_merged.groupby("คณะ")["คะแนน"].sum().reset_index()
         fac_count = df_master.groupby("คณะ").size().reset_index(name="Total_Lecturers")
-        
         kpi_f = fac_count.merge(fac_score, on="คณะ", how="left").fillna(0)
         kpi_f["KPI_Score"] = (kpi_f["คะแนน"] / kpi_f["Total_Lecturers"]) * 5
         st.dataframe(kpi_f.style.format({"KPI_Score": "{:.2f}", "คะแนน": "{:.2f}"}), use_container_width=True)
 
-# ==========================================
-# 5. Submit & Manage Sections
-# ==========================================
 elif menu == "✍️ Submit Publication":
     if not st.session_state.logged_in:
         st.warning("🔒 Please login as Admin to register new research.")
     else:
         st.subheader("Register New Publication")
-        with st
+        with st.form("input_form", clear_on_submit=True):
+            title = st.text_input("Research Title")
+            c1, c2 = st.columns(2)
+            year = c1.number_input("Year (B.E.)", 2560, 2600, 2568)
+            db = c2.selectbox("Database", ["TCI1", "TCI2", "Scopus Q1", "Scopus Q2", "Scopus Q3", "Scopus Q4"])
+            authors = st.multiselect("Select Authors", df_master["Name-surname"].unique().tolist())
+            s_map = {"TCI1": 0.8, "TCI2": 0.6, "Scopus Q1": 1.0, "Scopus Q2": 1.0, "Scopus Q3": 1.0, "Scopus Q4": 1.0}
+            if st.form_submit_button("Submit"):
+                if title and authors:
+                    client = conn_sheets()
+                    ws = client.open("Research_Database").worksheet("research")
+                    for a in authors:
+                        ws.append_row([title, year, db, s_map[db], a])
+                    st.success("Successfully Saved!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+
+elif menu == "⚙️ Manage Database":
+    if not st.session_state.logged_in:
+        st.warning("🔒 Please login as Admin to manage database.")
+    else:
+        st.subheader("Manage Records")
+        if not df_research.empty:
+            unique_titles = df_research.drop_duplicates(subset=['ชื่อเรื่อง'])
+            sel = st.selectbox("Select Title to Remove:", ["-- Select --"] + unique_titles['ชื่อเรื่อง'].tolist())
+            if sel != "-- Select --":
+                if st.button("🚨 Delete Record"):
+                    client = conn_sheets()
+                    ws = client.open("Research_Database").worksheet("research")
+                    recs = ws.get_all_records()
+                    for i, r in enumerate(reversed(recs)):
+                        if r.get('ชื่อเรื่อง') == sel:
+                            ws.delete_rows(len(recs) - i + 1)
+                            time.sleep(0.2)
+                    st.success("Deleted!"); st.cache_data.clear(); time.sleep(1); st.rerun()
