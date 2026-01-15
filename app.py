@@ -170,7 +170,6 @@ if menu == "📊 Dashboard & Reports":
         
         fig_inst.update_layout(yaxis=dict(title="Number of Titles"), yaxis2=dict(title="Total Weight Score", overlaying="y", side="right", showgrid=False), template="plotly_white", legend=dict(orientation="h", y=1.1))
         st.plotly_chart(fig_inst, use_container_width=True)
-        st.dataframe(inst_summary.rename(columns={"ปี":"Year", "Titles":"Total Unique Titles"}), use_container_width=True, hide_index=True)
 
     with t1:
         st.markdown("#### 🏆 KPI Achievement by Program")
@@ -178,61 +177,66 @@ if menu == "📊 Dashboard & Reports":
         all_progs = all_progs[(all_progs["หลักสูตร"] != "-") & (all_progs["หลักสูตร"] != "")]
         faculty_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
 
-        prog_sum = df_filtered.merge(df_master[['Name-surname', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
-        prog_sum = prog_sum.groupby("หลักสูตร")["คะแนน"].sum().reset_index()
-        prog_report = all_progs.merge(prog_sum, on="หลักสูตร", how="left").fillna(0)
+        # คำนวณ Score และ Titles รายหลักสูตร
+        prog_data = df_filtered.merge(df_master[['Name-surname', 'หลักสูตร']], left_on="ผู้เขียน", right_on="Name-surname", how="left")
+        prog_summary = prog_data.groupby("หลักสูตร").agg(
+            Total_Score=("คะแนน", "sum"),
+            Total_Titles=("ชื่อเรื่อง", "nunique")
+        ).reset_index()
+        
+        prog_report = all_progs.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
 
+        # 1. KPI Bar Chart (Top)
         def calc_kpi(row):
             n = faculty_counts.get(row["หลักสูตร"], 1)
             group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
             x = 60 if row["หลักสูตร"] == "Ph.D-Admin" else (40 if row["หลักสูตร"] in group_40 else 20)
-            return round(min((((row["คะแนน"] / n) * 100) / x) * 5, 5.0), 2)
+            return round(min((((row["Total_Score"] / n) * 100) / x) * 5, 5.0), 2)
 
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
         prog_report = prog_report.sort_values(by=["คณะ", "KPI Score"])
-        fig = px.bar(prog_report, x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white")
-        fig.add_vline(x=5.0, line_dash="dash", line_color="#ef4444", annotation_text="Target")
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(prog_report, use_container_width=True, hide_index=True)
+
+        fig_kpi = px.bar(prog_report, x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', 
+                         range_x=[0, 5.5], text="KPI Score", height=600, template="plotly_white")
+        fig_kpi.add_vline(x=5.0, line_dash="dash", line_color="#ef4444", annotation_text="Target")
+        st.plotly_chart(fig_kpi, use_container_width=True)
+
+        st.divider()
+
+        # 2. Comparison Bar Chart (Middle)
+        st.markdown("#### 📊 Volume vs. Weighted Score (21 Programs)")
+        fig_compare = go.Figure()
+        fig_compare.add_trace(go.Bar(x=prog_report["หลักสูตร"], y=prog_report["Total_Titles"], name="Titles Count", marker_color='#3B82F6'))
+        fig_compare.add_trace(go.Bar(x=prog_report["หลักสูตร"], y=prog_report["Total_Score"], name="Weighted Score", marker_color='#1E3A8A'))
+        
+        fig_compare.update_layout(barmode='group', xaxis_tickangle=-45, template="plotly_white", height=500,
+                                  legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_compare, use_container_width=True)
+
+        st.divider()
+
+        # 3. Data Table (Bottom)
+        st.markdown("#### 📋 Detailed Data")
+        st.dataframe(prog_report.sort_values("KPI Score", ascending=False), use_container_width=True, hide_index=True)
 
     with t2:
         st.markdown("#### 👤 Researcher Profile & Portfolio")
-        
-        # 1. Search Section
-        search_author = st.selectbox(
-            "🔍 Search Researcher Name to view Portfolio:", 
-            ["-- Select Researcher --"] + sorted(df_master["Name-surname"].unique().tolist())
-        )
+        search_author = st.selectbox("🔍 Search Researcher:", ["-- Select Researcher --"] + sorted(df_master["Name-surname"].unique().tolist()))
 
         if search_author != "-- Select Researcher --":
-            # Filter works for specific author (Filter follows the Sidebar Year Filter)
-            author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].copy()
-            author_works = author_works.sort_values("ปี", ascending=False)
-            
+            author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].copy().sort_values("ปี", ascending=False)
             if not author_works.empty:
                 col_a, col_b = st.columns([1, 3])
                 with col_a:
-                    st.metric("Individual Works", f"{len(author_works)} Titles")
-                    st.metric("Individual Score", f"{author_works['คะแนน'].sum():.2f}")
-                
+                    st.metric("Total Works", f"{len(author_works)}")
+                    st.metric("Total Score", f"{author_works['คะแนน'].sum():.2f}")
                 with col_b:
-                    st.markdown(f"**Research List for: {search_author}**")
-                    st.dataframe(
-                        author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], 
-                        use_container_width=True, 
-                        hide_index=True,
-                        column_config={
-                            "ปี": st.column_config.NumberColumn("Year", format="%d"),
-                            "ชื่อเรื่อง": st.column_config.TextColumn("Research Title", width="large"),
-                        }
-                    )
+                    st.dataframe(author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], use_container_width=True, hide_index=True)
             else:
-                st.info(f"No research records found for {search_author} in {year_option}.")
+                st.info("No records found.")
         
         st.divider()
-        
-        # 2. Rankings Section
-        st.markdown("##### 🏆 Overall Researcher Rankings")
+        st.markdown("##### 🏆 Researcher Rankings")
         if not df_filtered.empty:
             p_report = df_filtered.groupby("ผู้เขียน").agg(Titles=("ชื่อเรื่อง", "nunique"), Total_Score=("คะแนน", "sum")).reset_index()
             st.dataframe(p_report.sort_values("Total_Score", ascending=False), use_container_width=True, hide_index=True)
@@ -246,7 +250,6 @@ if menu == "📊 Dashboard & Reports":
             st.dataframe(fac_sum.sort_values(by=["Year", "Total_Score"], ascending=[False, False]), use_container_width=True, hide_index=True)
 
     with t4:
-        st.markdown("#### 📋 Master Academic Database")
         st.dataframe(df_master, use_container_width=True, hide_index=True)
 
 # ==========================================
@@ -281,29 +284,23 @@ elif menu == "⚙️ Manage Database":
     if not df_research.empty:
         df_manage = df_research.drop_duplicates(subset=['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']).copy()
         df_manage = df_manage[['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']].sort_values(by=['ปี', 'ชื่อเรื่อง'], ascending=[False, True])
-        st.markdown("##### 🔍 Records List")
         st.dataframe(df_manage, use_container_width=True, hide_index=True)
 
         options = ["-- Select Entry --"] + [f"{r['ปี']} | {r['ชื่อเรื่อง']} | {r['ฐานวารสาร']}" for _, r in df_manage.iterrows()]
         selected_option = st.selectbox("Choose entry to delete:", options)
 
         if selected_option != "-- Select Entry --":
-            parts = selected_option.split(" | ")
-            target_title = parts[1].strip()
-            
+            target_title = selected_option.split(" | ")[1].strip()
             if st.button("🗑 Confirm Delete"):
-                with st.spinner("Processing..."):
+                with st.spinner("Deleting..."):
                     client = conn_sheets()
                     ws = client.open("Research_Database").worksheet("research")
                     try:
                         all_data = ws.get_all_records()
                         rows_to_del = [i + 2 for i, row in enumerate(all_data) if str(row.get('ชื่อเรื่อง')).strip() == target_title]
-                        
                         if rows_to_del:
-                            for r in sorted(rows_to_del, reverse=True):
-                                ws.delete_rows(r)
-                            st.success(f"✅ Deleted {len(rows_to_del)} record(s) for: {target_title}")
+                            for r in sorted(rows_to_del, reverse=True): ws.delete_rows(r)
+                            st.success(f"✅ Deleted {len(rows_to_del)} record(s).")
                             st.cache_data.clear()
                             st.rerun()
-                        else: st.error("Entry not found in Sheet.")
                     except Exception as e: st.error(f"Error: {e}")
