@@ -49,12 +49,12 @@ st.set_page_config(page_title="Research Management - STIU", layout="wide")
 
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 2rem; color: #1E3A8A; }
+    [data-testid="stMetricValue"] { font-size: 1.8rem; color: #1E3A8A; }
     .stMetric {
         background-color: #ffffff;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         border-left: 5px solid #1E3A8A;
     }
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
@@ -76,14 +76,14 @@ st.markdown("""
 
 header_col1, header_col2 = st.columns([1, 6])
 with header_col1:
-    try: st.image("logo.jpg", width=150)
+    try: st.image("logo.jpg", width=140)
     except: st.info("🏫 STIU LOGO")
 
 with header_col2:
     st.markdown("""
         <div style="padding-top: 10px;">
             <h1 style="color: #1E3A8A; margin-bottom: 0px;">St Teresa International University</h1>
-            <p style="color: #64748b; font-size: 1.2rem; margin-top: 0px;">Research Management & KPI Tracking System</p>
+            <p style="color: #64748b; font-size: 1.1rem; margin-top: 0px;">Research Management & KPI Tracking System</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -98,7 +98,7 @@ if df_master.empty or df_research.empty:
     st.warning("⚠️ Accessing Google Sheets... Please wait or check your connection.")
     st.stop()
 
-# ทำความสะอาดข้อมูลตัวเลข
+# Clean numerical data
 df_research['คะแนน'] = pd.to_numeric(df_research['คะแนน'], errors='coerce').fillna(0.0)
 df_research['ปี'] = pd.to_numeric(df_research['ปี'], errors='coerce').fillna(0).astype(int)
 
@@ -196,7 +196,43 @@ if menu == "📊 Dashboard & Reports":
         st.dataframe(prog_report, use_container_width=True, hide_index=True)
 
     with t2:
-        st.markdown("#### 👤 Researcher Rankings")
+        st.markdown("#### 👤 Researcher Profile & Portfolio")
+        
+        # 1. Search Section
+        search_author = st.selectbox(
+            "🔍 Search Researcher Name to view Portfolio:", 
+            ["-- Select Researcher --"] + sorted(df_master["Name-surname"].unique().tolist())
+        )
+
+        if search_author != "-- Select Researcher --":
+            # Filter works for specific author (Filter follows the Sidebar Year Filter)
+            author_works = df_filtered[df_filtered["ผู้เขียน"] == search_author].copy()
+            author_works = author_works.sort_values("ปี", ascending=False)
+            
+            if not author_works.empty:
+                col_a, col_b = st.columns([1, 3])
+                with col_a:
+                    st.metric("Individual Works", f"{len(author_works)} Titles")
+                    st.metric("Individual Score", f"{author_works['คะแนน'].sum():.2f}")
+                
+                with col_b:
+                    st.markdown(f"**Research List for: {search_author}**")
+                    st.dataframe(
+                        author_works[['ปี', 'ชื่อเรื่อง', 'ฐานวารสาร', 'คะแนน']], 
+                        use_container_width=True, 
+                        hide_index=True,
+                        column_config={
+                            "ปี": st.column_config.NumberColumn("Year", format="%d"),
+                            "ชื่อเรื่อง": st.column_config.TextColumn("Research Title", width="large"),
+                        }
+                    )
+            else:
+                st.info(f"No research records found for {search_author} in {year_option}.")
+        
+        st.divider()
+        
+        # 2. Rankings Section
+        st.markdown("##### 🏆 Overall Researcher Rankings")
         if not df_filtered.empty:
             p_report = df_filtered.groupby("ผู้เขียน").agg(Titles=("ชื่อเรื่อง", "nunique"), Total_Score=("คะแนน", "sum")).reset_index()
             st.dataframe(p_report.sort_values("Total_Score", ascending=False), use_container_width=True, hide_index=True)
@@ -210,6 +246,7 @@ if menu == "📊 Dashboard & Reports":
             st.dataframe(fac_sum.sort_values(by=["Year", "Total_Score"], ascending=[False, False]), use_container_width=True, hide_index=True)
 
     with t4:
+        st.markdown("#### 📋 Master Academic Database")
         st.dataframe(df_master, use_container_width=True, hide_index=True)
 
 # ==========================================
@@ -220,7 +257,7 @@ elif menu == "✍️ Submit Research":
     with st.form("entry_form", clear_on_submit=True):
         t_in = st.text_input("Publication Title").strip()
         c1, c2 = st.columns(2)
-        with c1: y_in = st.number_input("Year (B.E.)", 2560, 2600, 2567)
+        with c1: y_in = st.number_input("Year (B.E.)", 2560, 2600, 2568)
         with c2: j_in = st.selectbox("Database / Journal", list(SCORE_MAP.keys()))
         a_in = st.multiselect("Select Author(s)", df_master["Name-surname"].unique().tolist())
         
@@ -242,13 +279,11 @@ elif menu == "⚙️ Manage Database":
     st.warning("⚠️ Action: Data deletion is permanent.")
     
     if not df_research.empty:
-        # 1. ตารางแสดงรายละเอียด
         df_manage = df_research.drop_duplicates(subset=['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']).copy()
         df_manage = df_manage[['ชื่อเรื่อง', 'ปี', 'ฐานวารสาร']].sort_values(by=['ปี', 'ชื่อเรื่อง'], ascending=[False, True])
         st.markdown("##### 🔍 Records List")
         st.dataframe(df_manage, use_container_width=True, hide_index=True)
 
-        # 2. Selectbox แบบใช้ Pipe (|) แบ่งส่วนข้อมูลเพื่อความแม่นยำ
         options = ["-- Select Entry --"] + [f"{r['ปี']} | {r['ชื่อเรื่อง']} | {r['ฐานวารสาร']}" for _, r in df_manage.iterrows()]
         selected_option = st.selectbox("Choose entry to delete:", options)
 
@@ -262,7 +297,6 @@ elif menu == "⚙️ Manage Database":
                     ws = client.open("Research_Database").worksheet("research")
                     try:
                         all_data = ws.get_all_records()
-                        # ค้นหาแถวที่มีชื่อเรื่องตรงกัน (กรณีมีผู้เขียนหลายคนลบทุกแถวที่เกี่ยวข้อง)
                         rows_to_del = [i + 2 for i, row in enumerate(all_data) if str(row.get('ชื่อเรื่อง')).strip() == target_title]
                         
                         if rows_to_del:
