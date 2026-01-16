@@ -162,13 +162,25 @@ if menu == "📊 Dashboard & Reports":
         prog_member_counts = df_master.groupby("หลักสูตร")["Name-surname"].nunique().to_dict()
         prog_summary = df_unique_agency.groupby("หลักสูตร").agg(Total_Score=("คะแนน", "sum")).reset_index()
         prog_report = all_progs.merge(prog_summary, on="หลักสูตร", how="left").fillna(0)
+        
         def calc_kpi(row):
             n = prog_member_counts.get(row["หลักสูตร"], 1)
             group_40 = ["G-Dip TH", "G-Dip Inter", "M. Ed-Admin", "M. Ed-LMS", "MBA", "MPH"]
             x = 60 if row["หลักสูตร"] == "Ph.D-Admin" else (40 if row["หลักสูตร"] in group_40 else 20)
             return round(min((((row["Total_Score"] / n) * 100) / x) * 5, 5.0), 2)
+        
         prog_report["KPI Score"] = prog_report.apply(calc_kpi, axis=1)
+        
+        # แสดงกราฟ
         st.plotly_chart(px.bar(prog_report.sort_values("KPI Score"), x="KPI Score", y="หลักสูตร", color="คณะ", orientation='h', range_x=[0, 5.5], text="KPI Score", template="plotly_dark").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
+        
+        # เพิ่มตารางสรุปข้อมูล
+        st.markdown("##### 📋 รายละเอียดคะแนนรายหลักสูตร")
+        df_prog_tab = prog_report.copy()
+        df_prog_tab['จำนวนอาจารย์ (n)'] = df_prog_tab['หลักสูตร'].map(prog_member_counts)
+        df_prog_tab = df_prog_tab[['หลักสูตร', 'คณะ', 'จำนวนอาจารย์ (n)', 'Total_Score', 'KPI Score']]
+        df_prog_tab.columns = ['หลักสูตร', 'คณะ', 'จำนวนอาจารย์ (n)', 'คะแนนผลงานรวม', 'คะแนน KPI (เต็ม 5)']
+        st.dataframe(df_prog_tab.sort_values("คะแนน KPI (เต็ม 5)", ascending=False), use_container_width=True, hide_index=True)
 
     with t2:
         st.markdown("#### 🏆 Top 3 Researchers")
@@ -191,12 +203,24 @@ if menu == "📊 Dashboard & Reports":
         fac_members = df_master.groupby("คณะ")["Name-surname"].nunique().to_dict()
         res_fac_unique = df_full_info.drop_duplicates(subset=['ชื่อเรื่อง', 'คณะ'])
         fac_sum = res_fac_unique.groupby("คณะ").agg(Total_Score=("คะแนน", "sum")).reset_index()
+        
         def calc_fac_kpi(row):
             y = 30 if row["คณะ"] in ["คณะสาธารณสุขศาสตร์", "คณะพยาบาลศาสตร์"] else 20
             n = fac_members.get(row["คณะ"], 1)
             return round(min((((row["Total_Score"] / n) * 100) / y) * 5, 5.0), 2)
+        
         fac_sum["Faculty KPI Score"] = fac_sum.apply(calc_fac_kpi, axis=1)
+        
+        # แสดงกราฟ
         st.plotly_chart(px.bar(fac_sum.sort_values("Faculty KPI Score"), x="Faculty KPI Score", y="คณะ", orientation='h', range_x=[0, 5.5], text="Faculty KPI Score", template="plotly_dark").add_vline(x=5.0, line_dash="dash", line_color="#F43F5E"), use_container_width=True)
+        
+        # เพิ่มตารางสรุปข้อมูล
+        st.markdown("##### 📋 รายละเอียดคะแนนรายคณะ")
+        df_fac_tab = fac_sum.copy()
+        df_fac_tab['จำนวนอาจารย์ (n)'] = df_fac_tab['คณะ'].map(fac_members)
+        df_fac_tab = df_fac_tab[['คณะ', 'จำนวนอาจารย์ (n)', 'Total_Score', 'Faculty KPI Score']]
+        df_fac_tab.columns = ['คณะ', 'จำนวนอาจารย์ (n)', 'คะแนนผลงานรวม', 'คะแนน KPI คณะ (เต็ม 5)']
+        st.dataframe(df_fac_tab.sort_values("คะแนน KPI คณะ (เต็ม 5)", ascending=False), use_container_width=True, hide_index=True)
 
     with t4: st.dataframe(df_master, use_container_width=True, hide_index=True)
 
